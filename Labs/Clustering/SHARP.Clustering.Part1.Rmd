@@ -1,0 +1,342 @@
+---
+title: "SHARP Clustering Lab: Part 1"
+author: "ks"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# {.tabset}
+
+## Load Data
+
+First install (if needed) and upload the libraries we'll use for the analysis.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
+#if (!requireNamespace("plotly", quietly = TRUE)) install.packages("plotly")
+#if (!requireNamespace("ComplexHeatmap", quietly = TRUE)) BiocManager::install("ComplexHeatmap")
+#if (!requireNamespace("CCA", quietly = TRUE)) install.packages("CCA")
+#if (!requireNamespace("corrplot", quietly = TRUE)) install.packages("corrplot")
+#if (!requireNamespace("factoextra", quietly = TRUE)) install.packages("factoextra")
+#if (!requireNamespace("tidyverse", quietly = TRUE)) install.packages("tidyverse")
+
+library(ggplot2)
+library(plotly)
+library(ComplexHeatmap)
+library(CCA)
+library(corrplot)
+library(factoextra)
+library(tidyverse)
+```
+
+Now let's upload the data.  I've subset the data to the 1170 participants who have both exposome and proteome measures.
+
+```{r datafiles}
+load("/cloud/project/Clustering/helix.RData")
+```
+
+This will show the similar dimensions of each data set.
+
+```{r complete-data}
+dim(covars)
+dim(phenos)
+dim(expsms)
+dim(prtm)
+```
+Note that the proteome has proteins as rows and participant values as columns.  This is a standard formatting for omic data.  Some omic-specific packages analyze the data in this form.  An example is the limma package for fitting linear models to gene expression data.
+
+## Covariates
+
+Let's visualize the distribution of child age.
+```{r covars}
+ggplot(covars, aes(x=hs_child_age_None)) + 
+ geom_histogram(aes(y=after_stat(density)), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="#FF6666") +
+ xlab("Child Age")
+```
+
+Children were recruited in different cohorts. Let's also see how child's age varies by cohort.
+
+```{r child-age-by-cohort}
+with(covars,boxplot(hs_child_age_None ~ h_cohort))
+```
+
+Let's investigate the correlations between children's phenotypes & covariates. First, a look at the covariate values.
+```{r covars-summary}
+str(covars)
+```
+I'm going to remove the first two columnns (ID and cohort) and convert the rest to numeric values so we can compute correlations. Some are  3-level ordered categorical variables (i.e., education,  native, parity).
+```{r numeric_covars}
+n_covars <- map_dfc(covars[,-c(1:2)],as.numeric)
+```
+
+Now let's check the phenotypes.
+```{r phenos}
+str(phenos)
+```
+We'll remove ID, and make the remaining columns numeric in preparation for a pairwise correlation analysis.
+```{r numeric_phenos}
+n_phenos <- map_dfc(phenos[,-1],as.numeric)
+```
+
+
+```{r corplot-covar-phenos}
+corrplot(cor(n_covars[,-1],n_phenos),
+         method = "square",
+         cl.cex=0.6,cl.ratio=0.5,cl.align.text = "l")
+```
+
+This shows positive associations between birthweight and gestational age, body mass index and child's weight (6-11 years old) and intelligence quotient measure using the RAVEN test with child's age, height, weight, and negative correlation of intelligence quotient with year of birth.
+
+## Exposome
+
+We have a large number of exposome variables, 222 in total.  Let's use a heatmap to visualize the correlation between exposures variables (columns). Again we need to remove the first column that is subject ID. Studying the codebook, we see that many of these variables are dichotomous or tertiles, but I'm just leaving them in as ordered categorical variables.
+
+```{r exposome}
+n_exposome <- map_dfc(expsms[,-1],as.numeric)
+cor_exposome <- cor(n_exposome)
+```
+
+The ComplexHeatmap package gives us a nice function to visualize heatmaps, while clustering the rows and columns. The default clustering method computes Euclidean distance between samples with complete linkage for combining clusters.
+
+```{r heatmap}
+htc <- ComplexHeatmap::Heatmap(cor_exposome,
+                               name = "Cor",
+                show_column_names = FALSE,
+              show_row_names = FALSE)
+ComplexHeatmap::draw(htc)
+```
+
+These variables are a combination of exposures during the pregnancy time period and exposures during the postnatal period. Let's break it down into two matrices and study these time periods separately. We'll do this by finding the variable names for the two different time periods from the codebook.
+
+```{r exposm-period}
+dim(n_exposome)
+preg_expsm <- 
+    codebook %>%
+        filter(period=="Pregnancy" & domain !="Covariates") %>%
+        filter(domain !="Phenotype") %>%
+        dplyr::select(variable_name)
+preg_expsm <- as.character(unlist((preg_expsm)))
+
+post_expsm <- 
+  codebook %>%
+        filter(period=="Postnatal" & domain !="Covariates") %>%
+        filter(domain !="Phenotype") %>%
+        dplyr::select(variable_name)
+post_expsm <- as.character(unlist((post_expsm)))
+```
+
+Next up:  apply dimension reduction techniques to see if the subjects cluster based on their profile of exposures in a lower dimensional space.
+
+## Prenatal Exposome (PCA, k-means)
+
+Scaling of the data is important for PCA. A PCA of the covariance matrix is different than a PCA of the correlation matrix (using standardized variables). We standardize all variables (features) to avoid having highly variable features contribute more to the summaries.
+
+We select the columns of interest from the exposome matrix, and scale them like this:
+
+```{r scale-dat}
+pregX  <- scale(n_exposome[,preg_expsm])
+```
+
+First let's conduct principle components analysis. I'm going to cluster the samples using Kmeans, and color them in the PC scatterplot by their cluster assignment.  
+
+How many clusters should we fit?
+```{r gap-stat}
+set.seed(12)
+factoextra::fviz_nbclust(pregX, kmeans, method = "gap_stat",nboot=40)
+```
+
+There were a few  issues with non-convergence,  but this plot says we should select 6 clusters.
+
+How does this result compare to using the silhouette width? Silhouette width is a direct calculation that doesn't encounter the convergence warning.
+```{r silhouette}
+fviz_nbclust(pregX, kmeans, method = "silhouette")
+```
+
+They both pick 6 clusters.
+
+Let's perform PCA and visualize the results with a scatterdiagram of PC1 vs PC2. We'll also do a k-means cluster analysis picking 6 clusters and color the points in our scatter diagram by their cluster assignment.
+
+```{r pca,fig.cap='PCA of 1170 children using exposome variables from pregnancy.'}
+my.pca <- prcomp(pregX,retx=TRUE)
+dfx_pregX <- as.data.frame(x = my.pca$x)
+
+set.seed(46)
+km6_pregX <- stats::kmeans(pregX,centers=6,nstart = 200)
+
+ggplot(dfx_pregX,  aes(x=PC1, y=PC2, 
+                       color =factor(km6_pregX$cluster))) + 
+        geom_point(size=2.5) +
+       labs(color="Cluster")
+```
+
+How much of the variation in PC1 does cluster explain?
+```{r cluster-variation}
+fit <- lm(dfx_pregX$PC1 ~ factor(km6_pregX$cluster))
+summary(fit)$r.squared
+```
+Cluster explains a lot of the variability of the first PC ($R^2 = 82\%$).
+
+The organizers warned us that the exposome captures cohort. Let's compare our cluster assignment to cohort.
+
+```{r compare-cluster-with-cohort}
+table(km6_pregX$cluster,covars$h_cohort)
+```
+
+Yup. We 'found' cohort! The labels differ between the different categorical variables, but only 23 samples are differently assigned between assigned cluster and cohort. 
+
+How much variation in the exposome do we explain with the first few PCs?
+```{r perc-var-expl}
+totvar <- sum(my.pca$sdev^2)
+plot(1:80,cumsum(my.pca$sdev[1:80]^2)/totvar,ylim=c(0,1),
+     type='l',xlab="PC",ylab="% Total Var")
+```
+
+The first 10 PCs explain 40% of the variation due to the exposome during pregnancy.
+
+## Postnatal Exposome  (PCA, k-means)
+
+Now let's repeat this analysis using the postnatal exposome. First, we scale (normalize) the variables (columns).
+
+```{r scale-dat-postnatal}
+postnX <- scale(n_exposome[,post_expsm])
+```
+
+How many clusters should we fit?
+```{r gap-stat-postnX}
+fviz_nbclust(postnX, kmeans, method = "gap_stat",nboot=40)
+```
+
+Again we had some non-convergence issues. What does silhouette width give us?
+```{r sil-postnX}
+fviz_nbclust(postnX, kmeans, method = "silhouette")
+```
+
+Both give us 6 clusters, so that's what we'll use.
+
+```{r pca-postnx,fig.cap='PCA of 1170 children using exposome variables from postnatal time.'}
+my.pca <- prcomp(postnX,retx=TRUE)
+dfx_postnX <- as.data.frame(x = my.pca$x)
+
+set.seed(42)
+km6_postnX <- stats::kmeans(postnX,centers=6,nstart = 200)
+
+ggplot(dfx_postnX,  aes(x=PC1, y=PC2, 
+          color = factor(km6_postnX$cluster))) + 
+          geom_point(size=2.5) +
+       labs(color="Cluster")
+```
+
+Again, it looks like we explain a lot of the variation of PC1 with cluster assignment. What is the $R^2$?
+
+```{r cohort-effects-postn}
+fit <- lm(dfx_postnX$PC1 ~ factor(km6_postnX$cluster))
+summary(fit)$r.squared
+```
+
+How closely do the cluster assignments from the prenatal and postnatal exposomes agree?
+```{r cluster-agreement}
+table(km6_pregX$cluster,km6_postnX$cluster)
+```
+Very closely!
+
+## Dynamic scatterplot
+
+With the plotly package you can explore the cluster structure of the output interactively, with the ability to rescale and rotate the figure. 
+```{r 3dplotly}
+plot_ly(x=dfx_postnX$PC1, y=dfx_postnX$PC2, z=dfx_postnX$PC3, type="scatter3d", mode = "markers", color=factor(km6_postnX$cluster))
+```
+
+## Interpreting PCs
+
+We can use correlations to look for the exposures that correlate with PCs within the separate times (pregnancy and postnatal.)
+
+```{r uni-cor-pregX}
+cormat <- cor(pregX,dfx_pregX[,1:10])
+dim(cormat)
+```
+
+```{r cor-pregX-PCs}
+hnr <- nrow(cormat)/2
+corrplot(cormat[1:hnr,],is.corr=FALSE,tl.cex=0.5,
+         cl.cex=0.6,cl.ratio=0.5,cl.align.text = "l")
+corrplot(cormat[-c(1:hnr),],is.corr=FALSE,tl.cex=0.5,
+         cl.cex=0.6,cl.ratio=0.5,cl.align.text = "l")
+```
+
+Prenatal PCBs are the exposures that are most correlated with PC1.
+
+Now let's look at exposures that explain the most variation in the postnatal period.
+```{r uni-cor-postn}
+cormat <- cor(postnX,dfx_postnX[,1:10])
+dim(cormat)
+```
+
+```{r vis-postn-cors}
+hnr <- nrow(cormat)/2
+corrplot(cormat[1:hnr,],is.corr=FALSE,tl.cex=0.5,
+         cl.cex=0.6,cl.ratio=0.5,cl.align.text = "l")
+corrplot(cormat[-c(1:hnr),],is.corr=FALSE,tl.cex=0.5,
+         cl.cex=0.6,cl.ratio=0.5,cl.align.text = "l")
+```
+
+
+## CCA 
+
+Now let's try a canonical correlation analysis to look for summary variables that correlate between the prenatal and postnatal periods. I'm not sure an exposome expert would try this, but my thinking is that the exposomes from both time points are informative of the same cluster structure, so there must be exposome summary variables at each time point that should correlate with each other.)
+
+Now just like for PCA, we want to work with the matrix after standardizing the variables(/features). 
+
+```{r cca}
+cc.out <- cc(pregX,postnX)
+names(cc.out)
+```
+
+Let's see the 20 largest correlation estimates.
+```{r cca-cormat}
+#corrplot(diag(cc.out$cor[1:20]))
+plot(cc.out$cor,type="b")
+```
+
+The top 5 pairs of canonical variables are very highly correlated. We can access the scores directly from the output as well to look at their pairwise correlation.
+
+```{r scores-output}
+names(cc.out$scores)
+```
+
+Let's take a look at the first pair of canonical variables:
+```{r scatplot-ccpr1}
+ccpr1 <- cbind.data.frame(cxs1 = cc.out$scores$xscores[,1],
+                          cys1 = cc.out$scores$yscores[,1])
+ggplot(ccpr1, aes(x=cxs1, y=cys1, 
+          color = factor(km6_postnX$cluster))) + 
+          geom_point(size=2.5) + 
+          labs(color="Cluster")
+```
+
+These linear combinations do a good job of separating clusters 1, 5 and 6 from an overlapping group of clusters (2,3,4).
+
+How about the next pair of canonical variables?
+```{r scatplot-ccpr2}
+ccpr2 <- cbind.data.frame(cxs2 = cc.out$scores$xscores[,2],
+                          cys2 = cc.out$scores$yscores[,2])
+ggplot(ccpr2, aes(x=cxs2, y=cys2, 
+          color = factor(km6_postnX$cluster))) + 
+          geom_point(size=2.5) + 
+          labs(color="Cluster")
+```
+
+Now we can separate group 2 from the others. 
+
+In low-dimensional space (n>p) the canonical variables are independent just like the PCs. Let's see how the PCs and Canonical variables correlate with one another using the pregnancy exposome.
+```{r cormat-cca}
+svmat <- cbind.data.frame(dfx_pregX[,1:3],
+               cc.out$scores$xscores[,1:3])
+corrplot::corrplot(cor(svmat),is.corr=FALSE)
+```
+
+PC1 is most correlated with the third canonical variable.  That means canonical correlation prioritized finding variables that were more correlated with the 3rd PC when analyzing the pregnancy exposome alone.  
+
+Let's jump to the next file and look at exposome & proteome together in a CCA.

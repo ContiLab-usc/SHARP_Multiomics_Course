@@ -1,0 +1,155 @@
+---
+title: 'SHARP Multiomics Workshop: Advanced Interactions Lab'
+author: "Natalia Zemlianskaia"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 4
+    df_print: paged
+---
+
+```{r overall setup, include=FALSE, echo=FALSE}
+library(gesso)
+
+options(knitr.table.format = "html")
+knitr::opts_chunk$set(echo = TRUE)
+
+# suppress warning messages for final rendering
+old.warn <- getOption("warn")
+options(warn=-1)
+
+```
+
+
+
+# Data exploration
+
+Our research question is to discover important genotype by maternal smoking interactions that are associated with a child’s BMI at 6-11 years of age
+
+The sample size is 1,122 children.
+The outcome in our analysis is a child's BMI with 2 categories, 0: Thinness and Normal, 1: Overweight and Obese. Genotype matrix includes 1000 SNPs with additive allele coding (0/1/2). 
+
+Exposure variable is binarized maternal active tobacco smoke during pregnancy, 0: no smoking, 1: smoking.
+
+Adjustment variables include maternal pre-pregnancy BMI, age, education status, cohort inclusion, and child's sex and ethnicity (PCs).
+
+For interaction analysis we have 1000 SNPs + 1 E + 1000 [SNPs by E] terms + 12 adjustment variables = 2013 predictors in total. 
+```{r}
+setwd("/cloud/project/Data")
+
+# OUTCOME  
+# hs_bmi_c_cat: body mass index categories at 6-11 years old - 
+# WHO reference (1: Thinness, 2: Normal, 3:Overweight, 4: Obese)
+# Y <- ifelse(as.numeric(Y) >= 3, 1, 0)
+Y = readRDS("Y.rds")
+sum(Y)/length(Y)
+
+# EXPOSURE  
+# e3_asmokcigd_p_None: maternal active tobacco smoke during pregnancy, mean num cig/day
+# E <- ifelse(E > 0, 1, 0)
+E = readRDS("E.rds")
+sum(E)/length(E)
+
+# GENOTYPES additive dosages for SNPs
+X = readRDS("X.rds")
+dim(X); n = dim(X)[1]; p = dim(X)[2]
+head(X[,1:5])
+MAF = colSums(X)/(2 * n)
+summary(MAF)
+
+# ADJUSTMENT VARIABLES
+U = readRDS("U.rds")
+colnames(U)
+# h_mbmi_None: maternal pre-pregnancy body mass index
+# e3_sex_Nonefemale: child sex (female / male)
+# h_age_None: maternal age (years)
+# h_cohort: cohort of inclusion (1 to 6) maternal
+# h_edumc_None: maternal education (1: primary school, 2:secondary school, 
+#               3:university degree or higher)
+# ethn_PC1, ethn_PC2: PCs
+
+causalSNPs = as.vector(unlist(read.table("CausalSNPs.txt")))
+causalSNPs
+```
+
+# Analysis with gesso
+
+`gesso` method focuses on a single environmental exposure and induces a main-effect-before-interaction hierarchical structure for the joint selection of interaction terms in a regularized regression model.
+```{r}
+# gesso (G[by]E[la]sso) analysis - hierarchical joint selection of GxE
+start = Sys.time()
+gesso_cv = gesso.cv(G=X, Y=Y, E=E, C=U, family="binomial", 
+                    grid_min_ratio=0.15, grid_size=20, nfolds=4,
+                    type_measure="auc",
+                    normalize=TRUE, verbose=TRUE)
+stop = Sys.time() - start; stop
+
+# obtaining results
+coefs = gesso.coef(fit=gesso_cv$fit, lambda=gesso_cv$lambda_min)
+sum(coefs$beta_gxe != 0)
+snps_lambda_min = colnames(X)[coefs$beta_gxe != 0]
+snps_lambda_min
+causalSNPs[6:10]
+
+# summarizing results
+gesso_results_gxe = tibble(name=colnames(X)[coefs$beta_gxe != 0],
+                           coef=coefs$beta_gxe[coefs$beta_gxe != 0],
+                           scaled_coef=coefs$beta_gxe[coefs$beta_gxe != 0] * 
+                             apply((X*E)[,coefs$beta_gxe != 0], 2, sd)) %>%
+                    arrange(desc(abs(scaled_coef)))
+gesso_results_gxe
+
+# alternative way to obtain coefficients
+coefs = gesso.coefnum(cv_model=gesso_cv, target_b_gxe_non_zero=6, less_than=TRUE)
+sum(coefs$beta_gxe != 0)
+snps_num_gxe = colnames(X)[coefs$beta_gxe != 0]
+snps_num_gxe
+causalSNPs[6:10]
+```
+
+
+# Evaluation of the results with principal selection metrics
+```{r}
+selection_metrics = function(snp_names, true_interactions) {
+  snp_indices = as.numeric(sapply(strsplit(snp_names, split="[.]"), 
+                                  function(x) x[2]))
+  
+  TP_num = length(intersect(snp_indices, true_interactions))
+  TN_num = (p - length(true_interactions)) - (length(snp_indices) - TP_num)
+  
+  precision = TP_num/ length(snp_names)
+  sensitivity = TP_num/ length(true_interactions)
+  specificity = TN_num / (p - length(true_interactions))
+  
+  return(list(precision=precision, 
+              sensitivity=sensitivity, 
+              specificity=specificity))
+}
+
+selection_lambda_min = selection_metrics(snps_lambda_min, causalSNPs[6:10])
+selection_num_gxe = selection_metrics(snps_num_gxe, causalSNPs[6:10])
+cbind(selection_lambda_min, selection_num_gxe)
+```
+
+# Single-marker p-vals for the selected SNPs
+```{r}
+gwis_alpha = 0.05/p; gwis_alpha
+for (g_ in snps_lambda_min){
+  print(g_)
+  g = X[,g_]
+  reg = summary(glm(Y ~ g*E + U, family="binomial"))   
+  print(round(reg$coefficients[c("g", "g:E"),], 5))
+}
+```
+
+# Explore individual SNPs 
+```{r}
+snp = 132
+snp_name = paste0("SNP.", snp, "")
+cor_ = tibble(cor=as.vector(cor(X[,-snp], X[,snp_name])),
+              name=colnames(X[,-snp]))
+print(cor_ %>% arrange(desc(cor_)) %>% filter(cor >= 0.3) %>% arrange(name), n=50) 
+```

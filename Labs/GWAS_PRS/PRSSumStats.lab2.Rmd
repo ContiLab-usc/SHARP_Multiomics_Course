@@ -1,0 +1,178 @@
+---
+title: "Advanced PRS and Summary Statistics Analyses"
+author: "Nicholas Mancuso and Zeyun Lu"
+date: "6/24/2022"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    df_print: paged
+    code_folding: hide
+---
+```{css, echo=FALSE}
+pre {
+  max-height: 200px;
+  overflow-: auto;
+}
+
+```
+
+```{r setup, include=FALSE}
+library(tidyverse)
+options(knitr.table.format = "html")
+knitr::opts_chunk$set(echo = TRUE)
+
+# suppress warning messages for final rendering
+old.warn <- getOption("warn")
+options(warn=-1)
+```
+
+## 1. Overview
+Large-scale GWAS for thousands of molecular phenotypes (e.g., metabolites, plasma proteins,
+lipids) have identified  genetic variants that associate with "expression" 
+suggesting partial genetic control. Given the complex regulatory network underlying
+molecular phenotypes, we expect widespread vertical and horizontal
+pleiotripy for variants with regulatory evidence. 
+
+### 1.1 Goals
+1. Here, we aim to leverage this widespread pleiotropy to identify shared genetic components
+across many molecular phenotypes using summary statistics.
+$\newcommand{\bG}{\mathbf{G}}$
+$\newcommand{\bX}{\mathbf{X}}$
+$\newcommand{\bz}{\mathbf{z}}$
+$\newcommand{\by}{\hat{\mathbf{y}}}$
+$\newcommand{\bbeta}{\boldsymbol{\beta}}$
+$\newcommand{\balpha}{\boldsymbol{\alpha}}$
+$\newcommand{\bbetahat}{\hat{\boldsymbol{\beta}}}$
+$\newcommand{\balphahat}{\hat{\boldsymbol{\alpha}}}$
+$\newcommand{\bBhat}{\hat{\mathbf{B}}}$
+$\newcommand{\bD}{\mathbf{D}}$
+$\newcommand{\bU}{\mathbf{U}}$
+$\newcommand{\bV}{\mathbf{V}}$
+$\newcommand{\bS}{\mathbf{S}}$
+$\newcommand{\bI}{\mathbf{I}}$
+$\newcommand{\bZ}{\mathbf{Z}}$
+
+### 1.2 Truncated Singular Value Decomposition
+Let $\bX$ be an $n \times p$ matrix. We can write the singular value decomposition
+(SVD) as $\bX = \bU \bS \bV^T$ where $\bU$ is an $n \times n$ orthonormal matrix
+(i.e. $\bU\bU^T = \bI_n$), $\bS$ is an $n \times p$ rectangular diagonal matrix 
+where $\bS_{ii} \geq 0$ are the _singular values_, and $\bV$ is an 
+$p \times p$ orthonormal matrix (i.e. $\bV\bV^T = \bI_p$). Note that columns of 
+$\bU$ are the eigenvectors of $\bX\bX^T$ and columns of $\bV$ are the 
+eigenvectors of $\bX^T \bX$ 
+(NB: learn more about PCA in upcoming session with Dr. Siegmund).
+
+In practice we are only interested in the first few components of $\bU, \bV$ and
+wish to compute the _truncated_ SVD (tSVD) as $\bX \approx \bU_t \bS_t \bV^T_t$ where
+we restrict to the first $t$ singular values of $\bU, \bS, \bV$. This results in 
+a rank-$t$ approximation to $\bX$ (the best rank-$t$ approximation under Frobenius
+Norm).
+
+Computing the SVD requires time $O(\text{min}(np^2, n^2p))$ which can be costly 
+for large $n,p$. Specialized algorithms (e.g., Lanczos, randomized projections/sketches)
+for tSVD run much faster than naive approach when $t \ll \text{min}(n, p)$.
+
+### 1.3 Decomposition of Genetic Associations (DeGAs; tSVD) for GWAS summary data
+[Tanigawa et al. Nat Comms 2019](https://www.nature.com/articles/s41467-019-11953-9) 
+describe an approach for tSVD on summary statistics, which we will briefly describe
+here. Let $\bZ$ be the $k \times p$ GWAS Z-score matrix (i.e. Wald statistic) for 
+$k$ phenotypes across $p$ SNPs. We can center each column and standardize by its
+standard deviation to obtain the mean-centered and standardized matrix $\tilde{\bZ}$.
+Computing the tSVD for $\tilde{\bZ} = \bU_t \bS_t \bV^2_t$ gives us a low-rank
+representation of our data and provides a means to assess shared/independent
+genetic components across phenotypes.
+
+### 1.4 Data Description 
+Here we will be investigating curated summary statistics on from 158 serum metabolites
+measured in 6263 men recruited for the Metabolic Syndrom in Men (METSIM) cohort 
+reported in [Gallois et al Nat Comms 2019](https://www.nature.com/articles/s41467-019-12703-7).
+
+Gallois et al reported 588 significant associations in at least one metabolite,
+of which we have pruned for LD resulting in associations across 290 variants for
+158 metabolites. 
+
+We aim to identify shared genetic components across these 158 metabolites using
+their respective GWAS summary data and tSVD. 
+
+## Loading the GWAS summary data
+Let's load the prepared, cleaned GWAS results for the 158 metabolites and effect-szies 
+corresponding to 290 SNPs. We'll first construct Z-scores based on Wald statistics
+and characterize the number of approximately independent hits per metabolite, as
+well as plot the distribution of Z-scores at these SNP/metabolite pairs.
+```{r echo=TRUE, message=FALSE}
+load("AdvSumStats.RData")
+
+# we should have three variables corresponding to: beta_hats, variances, and 
+# metabolite names
+ls()
+
+df_metab <- tibble(metab = metab_names)
+
+Z <- df_beta / sqrt(var_beta)
+df_Z <- Z %>% 
+  rownames_to_column %>%
+  as_tibble %>%
+  rename(snp = rowname)
+
+# ~ 10 metabolites don't exhibit true GWS signal, but this is due to our
+# selection of SEs based on standard test, compared with CMS test reported in study
+df_lz <- df_Z %>% 
+  pivot_longer(-snp, names_to="metab", values_to="zscore") 
+
+df_lz %>% 
+  mutate(p.value = 2 * pnorm(abs(zscore), lower.tail=FALSE)) %>%
+  group_by(metab) %>%
+  summarize(NSig = sum(p.value <= 5e-8)) %>%
+  arrange(-NSig)
+```
+
+Let's create a figure to see the overall distribution of Z-scores in our data.
+```{r echo=TRUE, message=FALSE}
+ggplot(df_lz, aes(zscore)) + geom_histogram()
+```
+
+### 1.4 Characterizing correlation structure and shared latent components
+We'll use the `corrplot` package to plot the overall correlational structure in
+our effect-sizes / Z-scores. Ultimately, we see an extreme amount of structure
+that primarily reflects HDL/LDL/VLDL groups.
+```{r echo=TRUE, message=FALSE}
+corrplot::corrplot(cor(as.matrix(Z)))
+
+# mean-center and standardize our data. this is done to ensure that each
+# snp is 'treated equally' in our decomposition, otherwise highly variable
+# columns will dominate; take transpose so we scale by SNP.
+Ztilde <- scale(t(Z))
+
+tsvd <- rsvd::rsvd(Ztilde, 4)
+mat_u <- tsvd$u
+colnames(mat_u) <- paste0("PC", 1:4)
+mat_v <- tsvd$v
+colnames(mat_v) <- paste0("PC", 1:4)
+
+
+df_u <- bind_cols(tibble(metab = rownames(Ztilde)), as_tibble(mat_u))
+df_v <- bind_cols(tibble(snp = colnames(Ztilde)), as_tibble(mat_v))
+```
+
+Let's plot the resulting principal components to get a sense of which phenotypes
+have shared genetic components. We find that VLDL, HDL, LDL, and TG tend to form 
+distinct clusters
+```{r echo=TRUE, message=FALSE}
+ggplot(df_u, aes(PC1, PC2, label=metab)) + geom_text()
+
+# create broad categories
+df_u <- df_u %>% mutate(Category = ifelse(grepl("VLDL", metab), "VLDL", 
+                                   ifelse(grepl("LDL", metab) & !grepl("VLDL", metab), "LDL",
+                                   ifelse(grepl("HDL", metab), "HDL", 
+                                          ifelse(grepl("TG", metab), "TG", "Other")))))
+
+# replot
+ggplot(df_u, aes(PC1, PC2, color=Category, group=Category)) + geom_point()
+```
+
+We can also plot the principal components for variants to get a sense of which
+SNPs affect many phenotypes. 
+```{r echo=TRUE, message=FALSE}
+ggplot(df_v, aes(PC1, PC2, label=snp)) + geom_point()
+```

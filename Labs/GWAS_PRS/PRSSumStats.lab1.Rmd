@@ -1,0 +1,233 @@
+---
+title: "PRS and Summary Statistics Analyses"
+author: "Nicholas Mancuso"
+date: "6/23/2022"
+output: html_document
+---
+```{css, echo=FALSE}
+pre {
+  max-height: 200px;
+  overflow-: auto;
+}
+
+```
+
+```{r setup, include=FALSE}
+library(tidyverse)
+options(knitr.table.format = "html")
+knitr::opts_chunk$set(echo = TRUE)
+
+# suppress warning messages for final rendering
+old.warn <- getOption("warn")
+options(warn=-1)
+```
+
+## 1. Overview
+### 1.1 Goals
+1. Use PGSCatalog and download CAD PRS and perform downstream analyses
+2. Perform multi-variate MR analysis of CAD using metabolites
+$\newcommand{\bG}{\mathbf{G}}$
+$\newcommand{\bX}{\mathbf{X}}$
+$\newcommand{\bz}{\mathbf{z}}$
+$\newcommand{\by}{\hat{\mathbf{y}}}$
+$\newcommand{\bbeta}{\boldsymbol{\beta}}$
+$\newcommand{\balpha}{\boldsymbol{\alpha}}$
+$\newcommand{\bbetahat}{\hat{\boldsymbol{\beta}}}$
+$\newcommand{\balphahat}{\hat{\boldsymbol{\alpha}}}$
+
+## 2. CAD Polygenic Risk Score Analyses {.tabset}
+### 2.1 PRS Model
+Let $\bG$ be the $N \times P$ genotype matrix for $N$ individuals at $P$ known risk 
+SNPs. Similarly, let $\bbetahat$ be the $P \times 1$ vector of effect-size estimates
+from independent GWAS data. We can predict the $i$th individuals genetic component
+of risk by weighting genotype by their respective effect-sizes and taking their 
+sum. Using mathematical notation this corresponds to, 
+$$\by_i = \sum_{j=1}^p \bG_{ij} \bbetahat_j.$$ We can succinctly represent this for all
+our individuals using matrix notation as $\by = \bG \bbetahat$.
+
+Given predicted risk scores $\by$, covariates $\bX$ and an exposure $\bz$, we can
+test for association between $\by$ and $\bz$. If robust, it provides evidence of 
+genetic component of risk influencing our exposure. We can test using straightforward
+`lm` or `glm` depending on the structure of the exposure. For today's analyses, 
+we'll be using `lm` since our exposures are continuous measures of expression.
+
+### 2.2 PGS Catalog
+The [PGS Catalog](https://www.pgscatalog.org/) is a website/databse of curated and
+harmonized PRS/PGS for >200 traits/diseases. Each PRS/PGS is annotated with relevant
+study information, prediction metrics, and how PRS/PGS was developed. For more
+information, please check out the website and corresponding paper by 
+[Lambert et al. Nature Genetics 2021](https://www.nature.com/articles/s41588-021-00783-5).
+
+### 2.3 Data Description 
+Geuvadis RNA sequencing data set contains 462 unrelated human lymphoblastoid cell 
+line samples from the CEU, FIN, GBR, TSI and YRI populations from the 
+[1000 Genomes](https://www.internationalgenome.org/). Sample collection was created 
+by the [Geuvadis consortium](http://www.geuvadis.org). More details about RNA-seq 
+Geuvadis project can be found [here](http://www.geuvadis.org/web/geuvadis/rnaseq-project) 
+and from [Lappalainen et al. Nature 2013](http://dx.doi.org/10.1038/nature12531).
+
+For our analysis we will be focusing on the quality-controlled and rank-normalized 
+LCL expression located [here](https://www.ebi.ac.uk/arrayexpress/files/E-GEUV-1/GD462.GeneQuantRPKM.50FN.samplename.resk10.txt.gz). Of these, we will focus on 119 genes involved in cyto/chemokine production
+to focus on inflammation and inflammatory factors.
+
+Our PRS of interest is derived from the [Koyama & Ito, et al Nat Genet 2020](https://www.nature.com/articles/s41588-020-0705-3)
+study on coronary artery disease (CAD). They performed large-scale CAD GWAS using
+25,892 cases and 142,336 controls of Japanese ancestry. They then performed a trans-ethnic
+meta-analysis by combining summary statistics with two previous European-based
+CAD GWAS for a total of 121,234 CAD cases (BBJ: 25,892; C4D: 60,801; UKBB: 34,541) 
+and 527,824 controls (BBJ: 142,336; C4D: 123,504; UKBB: 261,984).
+
+The primary goal of this analysis will be to identify genes whose expression in 
+LCLs is related to CAD risk through inflammation/inflammatory response.
+
+### 2.4 Loading the PRS Data
+Let's first download PRS weights from the PGS Catalog and inspect the distribution
+of GWAS inferred effect-sizes. In general, GWAS effect sizes follow a mixture of
+normal distributions, but for PRS-selected variants, weights should deviate from
+zero (or else they would not be selected!) resulting in a mixture of two truncated
+distributions.
+```{r Downloading PRS weights from PGS Catalog, echo=TRUE, message = FALSE}
+# url to CAD PRS/PGS in the PGS Catalog
+cad_url <- "http://ftp.ebi.ac.uk/pub/databases/spot/pgs/scores/PGS000337/ScoringFiles/PGS000337.txt.gz"
+#cad_url <- "PGS000337.txt.gz"
+# contains a header with comments indicated by '#'; let's skip those for now
+df_prs <- readr::read_table2(cad_url, comment = "#")
+
+# print the first few rows and tibble info
+df_prs
+
+# histogram of the weights in PRS/PGS; note weights should not overlap 0!
+ggplot(df_prs, aes(effect_weight)) + geom_histogram()
+```
+
+### 2.5 Loading GEUVADIS
+Let's load our GEUVADIS individuals. I've pre-computed their CAD risk for simplicity.
+In practice this could be done using the `score` function in `PLINK` with appropriate
+parameters passed in. A simple sanity check should show a normal looking distribution
+of CAD risk.
+```{r Load GEUVADIS data, echo=TRUE, message = FALSE}
+load("GEUVADIS.RData")
+
+# inspect PRS + PCs
+df_geuv
+
+# how does ancestry check out?
+ggplot(df_geuv, aes(PC2, PC1)) + 
+  geom_point()
+
+# plot risk distribution
+ggplot(df_geuv, aes(PRS_CAD)) + 
+  geom_histogram() + 
+  xlab("CAD PRS in GEUVADIS individuals")
+
+# how does PRS compare against PCs?
+df_geuv %>% 
+  pivot_longer(-c(IID, PRS_CAD), names_to="PC") %>% 
+  group_by(PC) %>% 
+  do(broom::tidy(lm(value ~ PRS_CAD, data=.))) %>% 
+  filter(term == "PRS_CAD")
+```
+
+### 2.6 Exposure scan with PRS
+Now that we've downloaded our PRS and predicted CAD risk into GEUVADIS individuals,
+let's inspect the expression data and then perform a gene-based scan. Here we'll
+be performing multiple linear regression with CAD scores as a risk factor. We saw
+that PRS strongly correlated with ancestry, so let's be sure to include genotyping
+PCs to adjust our PRS estimates.
+```{r, echo=TRUE, message = FALSE}
+# inspect compiled tibble
+df_geuv_f
+
+df_scan <- df_geuv_f %>% 
+  group_by(Gene) %>% 
+  do(broom::tidy(lm(value ~ PRS_CAD + PC1 + PC2 + PC3 + PC4 + PC5, data=.))) %>%
+  filter(term == "PRS_CAD") %>%
+  ungroup() %>%
+  mutate(q.value = qvalue::qvalue(p.value)$qvalues) %>%
+  arrange(p.value)
+
+# check out genes with FDR < 0.2
+df_scan %>% filter(q.value < 0.2)
+```
+
+Two genes, `ENSG00000188064.5` (`WNT7B`) and `ENSG00000175505.9` (`CLCF1`), show some
+evidence of association with CAD risk. Let's inspect how expression levels 
+actually track.
+```{r, echo=TRUE, message = FALSE}
+# ENSG00000188064.5 is WNT7B and involved in Wnt signalling
+ggplot(df_geuv_f %>% filter(Gene == "ENSG00000188064.5"), aes(PRS_CAD, value)) +
+  geom_point() + 
+  geom_smooth(method="lm") +
+  xlab("CAD PRS in GEUVADIS individuals") + 
+  ylab("ENSG00000188064.5 levels")
+
+# ENSG00000175505.9 is CLCF1 and involved in lipid metabolism
+ggplot(df_geuv_f %>% filter(Gene == "ENSG00000175505.9"), aes(PRS_CAD, value)) +
+  geom_point() + 
+  geom_smooth(method="lm") +
+  xlab("CAD PRS in GEUVADIS individuals") + 
+  ylab("ENSG00000175505.9 levels")
+```
+
+## 3. CAD Multivariate MR Anaylsis {.tabset}
+### 3.1 Mendelian Randomization 
+Let $\bbeta^{o}$ be the $P x 1$ latent effects for an outcome of interest $o$ and let
+$\bbeta^{x}$ be the $P \times 1$ latent effects for an exposure $x$. We can model
+a mediating relationship of $x$ on $o$ as $\bbeta^{o} = \bbeta^{x} \alpha$, where
+$\alpha$ is the mediating effect. If we observed $\bbeta^{o}, \bbeta^{x}$ directly
+we could estimate $\hat{\alpha}$ to test the hypothesis that $\alpha \neq 0$.
+Unfortunately, we are unable to observe $\bbeta^{o}, \bbeta^{x}$ directly, but we
+can replace them with estimates from GWAS $\bbetahat^{o}, \bbetahat^{x}$. This
+results in a model of $$\bbetahat^{o} = \bbetahat^{x}\alpha + \epsilon$$ where
+$\epsilon_j \sim N(0, s^2_j)$ and $s^2_j$ is the squared standard error of 
+$\bbetahat^{o}_j$. 
+
+We can estimate $\hat{\alpha}$ using weighted least squares as
+$$\hat{\alpha} = \frac{\sum_{j=1}^P (\bbetahat_j^x / s^2_j) \cdot \bbetahat_j^o}{\sum_{j=1}^P {\bbetahat_j^x}^2 / s^2_j}.$$
+
+$\newcommand{\bBhat}{\hat{\mathbf{B}}}$
+$\newcommand{\bD}{\mathbf{D}}$
+In practice we often have multiple exposures of interest $x_1, \dotsc, x_k$, 
+many of which are correlated or have similar functions. We can leverage this and
+describe a multivariate mediation model as $$\bbetahat^{o} = \bBhat \balpha + \epsilon$$
+where $\bBhat = [\bbetahat^{x_1}, \dotsc, \bbetahat^{x_k}]$ is the $P \times k$
+matrix of effect-sizes across our $k$ exposures at the same $P$ SNPs. 
+
+We can infer
+the $k \times 1$ mediating effect vector $\balpha$ using weighted least squares
+as
+$$ \balphahat = (\bBhat^T \bD \bBhat)^{-1} \bBhat^T \bD \bbetahat^o$$
+where $\bD$ is $diag(s^{-2}_1, \dotsc, s^{-2}_k)$ is the diagonal matrix of the
+reciprocal squared standard errors.
+
+### 3.2 MR Base
+[MR Base](https://www.mrbase.org/) is a database and R package to perform robust,
+interpretable Mendelian Randomization analyses. The corresponding manuscript by
+[Hemani et al eLife 2018](https://elifesciences.org/articles/34408) describes it
+in detail.
+
+### 3.3 Data Description
+Effect-size estimates for CAD are derived from the [var der Harts, et al. Circulation Research 2018](https://www.ahajournals.org/doi/10.1161/CIRCRESAHA.117.312086)
+study on coronary artery disease (CAD). They performed large-scale CAD GWAS using
+4,541 CAD cases and 261,984 controls of UK Biobank resource followed by replication 
+in 88,192 cases and 162,544 controls from CARDIoGRAMplusC4D.
+
+### 3.4 MV MR Analysis of CAD
+I've downloaded and prepared metabolite data for `met-d-bOHbutyrate`, 
+`met-d-DHA`, `met-d-M_HDL_PL_pct`, and `met-d-S_HDL_PL_pct` along with corresponding
+CAD effect-size estimates and standard errors.
+```{r, echo=TRUE, message=FALSE}
+load("MVMR.RData")
+
+df_beta
+```
+
+Let's perform MV-MR analysis of our metabolite exposures on CAD risk while weighting
+for the uncertainty in our CAD effect-size estimates. We find marginal evidence of
+`met-d-DHA` (Docosahexaenoic acid) affecting CAD risk. 
+```{r, echo=TRUE, message=FALSE}
+df_mvres <- broom::tidy(lm(CAD ~ `met-d-bOHbutyrate` + `met-d-DHA` + `met-d-M_HDL_PL_pct` + `met-d-S_HDL_PL_pct` + 0, weights = 1 / df_beta$CAD.se^2, data=df_beta))
+
+df_mvres
+```
+

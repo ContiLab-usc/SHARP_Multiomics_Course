@@ -1,0 +1,188 @@
+---
+title: 'SHARP Multiomics Workshop:'
+subtitle: "Pre-Workshop Lab: Polygenic Risk Score Analysis"
+author: "Author Name"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    df_print: paged
+    code_folding: hide
+---
+
+```{css, echo=FALSE}
+pre {
+  max-height: 200px;
+  overflow-: auto;
+}
+
+```
+
+```{r setup, include=FALSE, echo=FALSE}
+library(knitr)
+library(reshape2)
+library(ggplot2)
+library(epiR)
+library(summarytools) # for summarizing variables
+library(tidyverse)
+library(glmnet)
+library(Biobase)
+library(gap)
+library(factoextra)
+library(gplots)
+library(MultiAssayExperiment)
+library(UpSetR)
+library(pls)
+library(corrplot)
+library(RColorBrewer)
+library(broom)
+
+options(knitr.table.format = "html")
+knitr::opts_chunk$set(echo = TRUE)
+
+# folder for analysis
+work.dir <- "/Volumes/GoogleDrive/Shared drives/Sharp Multi-omics/SHARP.MultiomicsWorkshop.USC.share"
+
+# suppress warning messages for final rendering
+old.warn <- getOption("warn")
+options(warn=-1)
+
+```
+
+# SHARP MULTIOMICS WORKSHOP
+## Data Descriptions for Polygenic risk scores
+We investigate... 
+
+
+# PRS ANALYSIS
+```{r PRS: Data Analysis setup, echo=FALSE }
+
+# Outcome
+outcome.Name <- "hs_bmi_c_cat" # "hs_asthma" # "hs_bmi_c_cat" "hs_zbmi_who"
+
+covariate.Names <- c("h_mbmi_None","e3_sex_None","h_age_None","h_cohort","h_edumc_None","ethn_PC1","ethn_PC2") 
+
+# SNPs
+snp.Names <- paste("SNP", 1:1000, sep=".")
+
+# Variants to include in the PRS
+M <- 9 # number of PRS snps for main effects
+PRS.SNP.names <- paste("SNP", read.table(paste0(work.dir, "/Data/CausalSNPs.txt"), sep=" ", header=F), sep=".")[1:M]
+
+# Analysis models to run
+PRS.univariate <- T
+
+```
+
+## PRS: Overview
+
+### The Question of interest:
+- Is there an effect of a combined polygenic risk score for the association with the outcome **`r outcome.Name`**?
+  <br>
+
+### PRS model
+
+## PRS: Processing the Data
+```{r PRS: Processing the Data, echo=TRUE}
+load(paste0(work.dir, "/Data/HELIX.MultiAssayExperiment.RData"))
+
+# not recommended way of storing genomewide data
+variables <- c(covariate.Names, "h_ethnicity_cauc", PRS.SNP.names)  # pull only PRS related SNPs
+d <- wideFormat(intersectColumns(helix_ma[variables, ,]), colDataCols=outcome.Name) # 1) select variables but keep in MultiAssayExperiment format; 2) intersectionColumns selects only individuals with complete data; 3) wideFormat returns as a DataFrame
+
+
+# Create the outcome variable
+Y <- d[,outcome.Name] # outcome
+if(outcome.Name=="hs_bmi_c_cat") { Y <- ifelse(as.numeric(Y)>=3, 1, 0)}
+
+# Create  design matrix
+X <- d[,paste0("genome_", PRS.SNP.names)]
+names(X) <- PRS.SNP.names
+X <- as.matrix(X)
+
+
+# Create the covariate design matrix
+U <- d[,c(paste0("covariates_", covariate.Names[1:5]), paste0("proteome.cov_", covariate.Names[6:7]))]
+names(U) <- covariate.Names
+U[,c("h_cohort","e3_sex_None","h_edumc_None")] <- lapply(U[,c("h_cohort","e3_sex_None","h_edumc_None")], factor)
+U[,c("h_mbmi_None", "h_age_None","ethn_PC1","ethn_PC2")] <- lapply(U[,c("h_mbmi_None", "h_age_None","ethn_PC1","ethn_PC2")], as.numeric)
+U <- model.matrix(as.formula(paste("~-1+", paste(covariate.Names, collapse="+"))), data=U) 
+
+
+# Other variables for analysis
+N <- nrow(d) # number of individuals in the analysis
+Q <- ncol(U)  # number of covariates in the matrix U
+P <- ncol(X)  # number of SNPs in the matrix X
+
+
+
+```
+<br>
+
+## PRS: Statistical Approaches for Association Analysis
+### PRS Univariate Regression
+
+```{r PRS: Univariate model, echo=TRUE}
+if(PRS.univariate) {
+  PRS.uni.results <- t(sapply(1:ncol(X), FUN=function(p) {  # using index p facilitate write
+    g <- X[,p]
+    reg <- glm(Y~g+U, family=binomial)    # perform logistic regression
+    s.reg <- summary(reg)                 # get the summary for the regression
+    c.reg <- as.numeric(s.reg$coef["g",])             # select the coefficients
+    write.table(t(c(PRS.SNP.names[p], c.reg)), file="PRS.UnivariateResultsGenome.txt", append=ifelse(p==1, F, T), quote=F, sep="\t", col.names=ifelse(p==1, T, F), row.names=F)
+    return(c.reg)                         # to avoid potential memory issues only return coefficients if small number of exposures
+  }, simplify=T))
+  PRS.uni.results <- data.frame(PRS.SNP.names,PRS.uni.results)
+  names(PRS.uni.results) <- c("SNP.Name","Estimate", "SD","Z.statistic", "P.value")
+  PRS.uni.results$P.value <- format(PRS.uni.results$P.value, scientific=T)
+}
+
+```
+
+#### PRS Univariate results: {.tabset}
+##### PRS Univariate Summary Table:
+```{r PRS: Univariate table}
+if(PRS.univariate) { kable(PRS.uni.results, digits=3, align="c", row.names=FALSE, col.names=c("E:SNP","Estimate", "SD","Z statistic", "P value"))}
+```
+
+
+### PRS Regression Analysis
+```{r PRS: PRS regression, echo=TRUE}
+
+appendOR <- function(reg.coef) {
+  n.r <- nrow(reg.coef)
+  r <- data.frame(reg.coef,
+             exp(reg.coef[1:n.r,"Estimate"]),
+             exp(reg.coef[1:n.r,"Estimate"] - 1.96*reg.coef[1:n.r,grep("Error", names(as.data.frame(reg.coef)))]),
+             exp(reg.coef[1:n.r,"Estimate"] + 1.96*reg.coef[1:n.r,grep("Error", names(as.data.frame(reg.coef)))]))
+  names(r)[(ncol(reg.coef)):(ncol(reg.coef)+3)] <- c("P.value", "OR", "OR.95L", "OR.95U")
+  return(r)
+}
+
+PRS.categories <-c(0, .1, .25, .75, .9, 1)
+PRS.ref <- "25% - 75%"
+PRS.labels <- paste(paste(100*PRS.categories[1:(length(PRS.categories)-1)], 100*PRS.categories[2:(length(PRS.categories))], sep="% - "), "%", sep="")
+PRS.labels.s <- PRS.labels[!PRS.labels==PRS.ref]
+
+weight <- PRS.uni.results$Estimate  # get weight from data
+PRS <- X%*%weight # calculate PRS
+
+# create categorical PRS
+q.v <- quantile(PRS[Y==0], probs=PRS.categories)  # quantile cutoffs within controls only
+q.v[1] <- min(q.v[1], min(PRS)) # if min(PRS) not in controls
+q.v[length(q.v)] <- max(q.v[length(q.v)], max(PRS)) # if max(PRS) is not in controls
+PRS.c <- cut(PRS, breaks=q.v, right=T, include.lowest=T, labels=PRS.labels)
+PRS.c <- relevel(PRS.c, ref = PRS.ref)
+
+reg <- glm(Y~PRS.c+U, family=binomial)    # perform logistic regression
+s.reg <- summary(reg)                 # get the summary for the regression
+c.reg <- s.reg$coef 
+c.reg <- c.reg[grep("PRS", row.names(c.reg)),]
+c.reg <- appendOR(c.reg)
+c.reg$P.value <- format(c.reg$P.value, scientific=T)
+kable(c.reg, align="c", digits=4)
+
+```
+
