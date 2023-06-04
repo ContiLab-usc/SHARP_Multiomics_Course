@@ -38,6 +38,7 @@ library(LUCIDus)
 library(reshape2)
 library(networkD3)
 library(sm)
+library(here)
 ```
 
 
@@ -45,8 +46,8 @@ library(sm)
 
 ```{r, message=FALSE}
 # read in data
-work.dir = "/cloud/project/Mediation"
-dat = readRDS(file.path(work.dir, "HELIX_data.rds"))
+work.dir = here::here()
+dat = readRDS(file.path(work.dir, "/Labs/Mediation/HELIX_data.rds"))
 ```
 
 
