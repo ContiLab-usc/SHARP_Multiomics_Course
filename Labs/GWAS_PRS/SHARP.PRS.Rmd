@@ -38,12 +38,13 @@ library(pls)
 library(corrplot)
 library(RColorBrewer)
 library(broom)
+library(here)
 
 options(knitr.table.format = "html")
 knitr::opts_chunk$set(echo = TRUE)
 
 # folder for analysis
-work.dir <- "/Volumes/GoogleDrive/Shared drives/Sharp Multi-omics/SHARP.MultiomicsWorkshop.USC.share"
+work.dir <- here::here()
 
 # suppress warning messages for final rendering
 old.warn <- getOption("warn")
@@ -69,7 +70,7 @@ snp.Names <- paste("SNP", 1:1000, sep=".")
 
 # Variants to include in the PRS
 M <- 9 # number of PRS snps for main effects
-PRS.SNP.names <- paste("SNP", read.table(paste0(work.dir, "/Data/CausalSNPs.txt"), sep=" ", header=F), sep=".")[1:M]
+PRS.SNP.names <- paste("SNP", read.table(paste0(work.dir, "/Labs/Data/CausalSNPs.txt"), sep=" ", header=F), sep=".")[1:M]
 
 # Analysis models to run
 PRS.univariate <- T
@@ -86,7 +87,7 @@ PRS.univariate <- T
 
 ## PRS: Processing the Data
 ```{r PRS: Processing the Data, echo=TRUE}
-load(paste0(work.dir, "/Data/HELIX.MultiAssayExperiment.RData"))
+load(paste0(work.dir, "/Labs/Data/HELIX.MultiAssayExperiment.RData"))
 
 # not recommended way of storing genomewide data
 variables <- c(covariate.Names, "h_ethnicity_cauc", PRS.SNP.names)  # pull only PRS related SNPs

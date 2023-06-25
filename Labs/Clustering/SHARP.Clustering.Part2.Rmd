@@ -18,7 +18,7 @@ library(tidyverse)
 ```
 
 ```{r datafiles}
-load("/cloud/project/Clustering/helix.RData")
+load("/cloud/project/Labs/Clustering/helix.RData")
 ```
 
 This time we're going to analyze the exposome and proteome data jointly and see how the canonical variables from a CCA of the proteome with exposome differ from the principle components from a PCA on   

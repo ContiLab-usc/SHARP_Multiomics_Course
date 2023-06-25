@@ -38,7 +38,7 @@ Adjustment variables include maternal pre-pregnancy BMI, age, education status, 
 
 For interaction analysis we have 1000 SNPs + 1 E + 1000 [SNPs by E] terms + 12 adjustment variables = 2013 predictors in total. 
 ```{r}
-setwd("/cloud/project/Data")
+setwd("/cloud/project/Labs/Data")
 
 # OUTCOME  
 # hs_bmi_c_cat: body mass index categories at 6-11 years old - 

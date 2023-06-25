@@ -38,7 +38,6 @@ library(LUCIDus)
 library(reshape2)
 library(networkD3)
 library(sm)
-library(here)
 ```
 
 
@@ -46,8 +45,8 @@ library(here)
 
 ```{r, message=FALSE}
 # read in data
-work.dir = here::here()
-dat = readRDS(file.path(work.dir, "/Labs/Mediation/HELIX_data.rds"))
+work.dir = "/cloud/project/Labs/Mediation"
+dat = readRDS(file.path(work.dir, "HELIX_data.rds"))
 ```
 
 
@@ -79,7 +78,7 @@ where $K$ is the subset of mediators selected by the SIS from step 1, and $p_{\l
 **Intuition of HIMA:** HIMA consists of two steps. The first step is to decrease the number of candidate mediators less than the number of observations, in other words, to limit the number of parameters in the model less than the number of observations. Such screening step makes the design matrix of regression invertible and we are able to obtain stable model parameters for mediation model. The second step is to utilize a LASSO-type penalty to obtain a sparse solution for model parameters. LASSO-type penalty is able to shrink model parameters to 0 and we only keep mediators whose coefficient is not 0. The larger the penalty is, the more model parameters are shrunk to 0. As a result, we achieve variable selection for the high dimensional mediators.
 
 ```{r, message=FALSE}
-med_multiple_hima = hima(X = dat$hs_hcb_madj_Log2,
+med_multiple_hima = hima(X = dat$hs_hcb_cadj_Log2,
                          Y = dat$hs_zbmi_who,
                          M = omics,
                          Y.family = "gaussian",

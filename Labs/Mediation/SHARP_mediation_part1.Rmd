@@ -76,7 +76,7 @@ We still use the multi-assay data from the HELIX study to illustrate the analysi
 
 ```{r, message=FALSE}
 # load multi assay experiment data
-work.dir = "/cloud/project/Mediation"
+work.dir = "/cloud/project/Labs/Mediation"
 
 
 dat = readRDS(file.path(work.dir, "HELIX_data.rds"))

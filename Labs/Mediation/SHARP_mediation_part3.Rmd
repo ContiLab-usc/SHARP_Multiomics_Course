@@ -41,7 +41,7 @@ library(sm)
 
 ```{r, message=FALSE}
 # read in data
-work.dir = "/cloud/project/Mediation"
+work.dir = "/cloud/project/Labs/Mediation"
 dat = readRDS(file.path(work.dir, "HELIX_data.rds"))
 ```
 

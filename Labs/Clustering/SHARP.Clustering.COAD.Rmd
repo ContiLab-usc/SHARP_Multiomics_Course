@@ -25,7 +25,7 @@ I also filtered the DNA methylation data on variance, requiring variance greater
 Here are the variables in the data set:
 
 ```{r load-data, echo=FALSE}
-load("/cloud/project/Clustering/coad.RData")
+load("/cloud/project/Labs/Clustering/coad.RData")
 str(coad)
 ```
 

@@ -37,7 +37,11 @@ if (!requireNamespace("RGCCA", quietly = TRUE)) install.packages("RGCCA")
 if (!requireNamespace("LUCIDus", quietly = TRUE)) install.packages("LUCIDus")
 if (!requireNamespace("rsvd", quietly = TRUE)) install.packages("rsvd")
 if (!requireNamespace("IntNMF", quietly = TRUE)) install.packages("IntNMF")
-if (!requireNamespace("HIMA", quietly = TRUE)) install.packages("HIMA")
+if (!requireNamespace("pls", quietly = TRUE)) install.packages("pls")
+if (!requireNamespace("summarytools", quietly = TRUE)) install.packages("summarytools")
+if (!requireNamespace("UpSetR", quietly = TRUE)) install.packages("UpSetR")
+if (!requireNamespace("here", quietly = TRUE)) install.packages("here")
+if (!requireNamespace("Hmisc", quietly = TRUE)) install.packages("Hmisc")
 
                  
 # Bioconductor packages
@@ -48,5 +52,8 @@ BiocManager::install("ComplexHeatmap")
 BiocManager::install("qvalue")
 BiocManager::install("mogsa")
 
+install.packages("devtools")
+# devtools install 
+devtools::install_github("kupietz/kableExtra")
 
 

@@ -29,7 +29,7 @@ The microRNA data had similar library sizes so I applied the same filter I appli
 
 Now we're ready to load the subset of processed LIHC data for multi-omic analysis.  We also have survival time for the patients with multi-omic analysis. Our goal will be to see if we can estimate latent variables that are associated with patient's survival time.
 ```{r load-data}
-load("/cloud/project/Clustering/mbliver.rda")
+load("/cloud/project/Labs/Clustering/mbliver.rda")
 sapply(mbliver,dim)
 ```
 

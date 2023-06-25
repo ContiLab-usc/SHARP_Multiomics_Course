@@ -34,7 +34,7 @@ library(broom)
 library(nnet)
 
 # following sets wd for running chunks of R code
-setwd("/cloud/project/Interaction/")
+setwd("/cloud/project/Labs/Interaction/")
 
 options(knitr.table.format = "html")
 knitr::opts_chunk$set(echo = TRUE)

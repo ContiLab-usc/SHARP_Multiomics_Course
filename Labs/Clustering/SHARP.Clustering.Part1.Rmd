@@ -34,7 +34,7 @@ library(tidyverse)
 Now let's upload the data.  I've subset the data to the 1170 participants who have both exposome and proteome measures.
 
 ```{r datafiles}
-load("/cloud/project/Clustering/helix.RData")
+load("/cloud/project/Labs/Clustering/helix.RData")
 ```
 
 This will show the similar dimensions of each data set.
