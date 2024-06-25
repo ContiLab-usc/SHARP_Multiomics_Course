@@ -1,7 +1,7 @@
 ---
 title: "Advanced PRS and Summary Statistics Analyses"
-author: "Nicholas Mancuso and Zeyun Lu"
-date: "6/24/2022"
+author: "Nicholas Mancuso and Sylvia Shen"
+date: "6/12/2024"
 output:
   html_document:
     toc: true
@@ -107,9 +107,14 @@ load("AdvSumStats.RData")
 # metabolite names
 ls()
 
+# data frame with metabolites names
 df_metab <- tibble(metab = metab_names)
 
+# calculate Z-scores based on Wald statistics
+# (rows are SNPs and columns are metabolites)
 Z <- df_beta / sqrt(var_beta)
+
+# data frame with each SNP's Z-scores 
 df_Z <- Z %>% 
   rownames_to_column %>%
   as_tibble %>%
@@ -120,6 +125,7 @@ df_Z <- Z %>%
 df_lz <- df_Z %>% 
   pivot_longer(-snp, names_to="metab", values_to="zscore") 
 
+# count the number of significant SNP associations for each metabolite
 df_lz %>% 
   mutate(p.value = 2 * pnorm(abs(zscore), lower.tail=FALSE)) %>%
   group_by(metab) %>%
@@ -144,7 +150,9 @@ corrplot::corrplot(cor(as.matrix(Z)))
 # columns will dominate; take transpose so we scale by SNP.
 Ztilde <- scale(t(Z))
 
+# rsvd: Randomized Singular Value Decomposition
 tsvd <- rsvd::rsvd(Ztilde, 4)
+
 mat_u <- tsvd$u
 colnames(mat_u) <- paste0("PC", 1:4)
 mat_v <- tsvd$v

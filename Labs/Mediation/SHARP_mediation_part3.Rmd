@@ -1,6 +1,6 @@
 ---
 title: 'SHARP Multi-omics Workshop: Mediation Analysis'
-author: "Yinqi Zhao, David Conti"
+author: "Yinqi Zhao, Qiran Jia, David Conti"
 date: "`r Sys.time()`"
 output:
   html_document:
@@ -34,6 +34,9 @@ library(LUCIDus)
 library(reshape2)
 library(networkD3)
 library(sm)
+library(plotly)
+#install.packages("janitor")
+library(janitor)
 ```
 
 
@@ -43,6 +46,10 @@ library(sm)
 # read in data
 work.dir = "/cloud/project/Labs/Mediation"
 dat = readRDS(file.path(work.dir, "HELIX_data.rds"))
+#loading plotting function for LUCID (highly customizable functions for complex LUCID model that are not built in the LUCIDus package)
+source(file.path(work.dir, "/plotting_func/plot_lucid_in_parallel.R"))
+source(file.path(work.dir, "plotting_func/plot_lucid_in_serial.R"))
+source(file.path(work.dir, "plotting_func/plot_omics_profiles_general.R"))
 ```
 
 
@@ -167,7 +174,9 @@ After preliminary screening, 45 proteins or metabolites are selected. The number
 #                     Rho_Z_Mu = c(30, 40, 50),
 #                     Rho_Z_Cov = c(0.1, 0.2, 0.3),
 #                     K = 4,
-#                     modelName = NULL)
+#                     lucid_model = "early",
+#                     init_omic.data.model = NULL)
+
 # # check the optimal tuning parameters
 # tune_lucid$tune_list
 
@@ -176,7 +185,7 @@ After preliminary screening, 45 proteins or metabolites are selected. The number
 #  optimal model: K = 4, Rho_Z_Cov = 0.1, Rho_Z_Mu = 50, Rho_G = 0.01
 #==========================================================================
 set.seed(123)
-fit_try1 = est_lucid(G = exposure, 
+fit_try1 = estimate_lucid(G = exposure, 
                      Z = omics_selected, 
                      Y = outcome, 
                      CoY = covariate,
@@ -186,21 +195,24 @@ fit_try1 = est_lucid(G = exposure,
                      Rho_Z_Cov = 0.1, 
                      Rho_Z_Mu = 50,
                      Rho_G = 0.01,
-                     modelName = NULL)
+                     lucid_model = "early",
+                     init_omic.data.model = NULL)
 # refit the model with the selected features
 set.seed(123)
-fit_try2 = est_lucid(G = exposure[, fit_try1$select$selectG],
+fit_try2 = estimate_lucid(G = exposure[, fit_try1$select$selectG],
                      Z = omics_selected[, fit_try1$select$selectZ],
                      Y = outcome, 
                      CoY = covariate,
                      useY = FALSE, 
                      K = 4, 
-                     family = "normal")
+                     family = "normal", 
+                     lucid_model = "early",
+                     init_omic.data.model = NULL)
 ```
 
 `summary_lucid` summarizes LUCID model and print out a table explaining associations among each components of LUCID. This summary table is very useful when a few number of environmental/genetic exposures and omic variables are included. Otherwise, it's better to interpret LUCID model through a Sankey diagram, as we'll show later.
 ```{r}
-# summary_lucid(fit_try2)
+print.sumlucid(summary_lucid(fit_try2))
 ```
 
 ### 6.3 Prediction of LUCID model
@@ -210,7 +222,8 @@ After fitting the LUCID model with selected features, we can predict the cluster
 pred_fit_try2 = predict_lucid(model = fit_try2, 
                               G = exposure[, fit_try1$select$selectG],
                               Z = omics_selected[, fit_try1$select$selectZ],
-                              CoY = covariate)
+                              CoY = covariate,
+                              lucid_model = "early")
 # prediction on latent cluster
 table(pred_fit_try2$pred.x)
 ```
@@ -262,7 +275,7 @@ To interpret the clustering results of LUCID, we can create box plot of BMI z-sc
 #=============================================================#
 ## 5. Omics profiles for  each cluster predicted by LUCID    ##
 #=============================================================#
-M_mean = as.data.frame(fit_try2$pars$mu)
+M_mean = as.data.frame(fit_try2$res_Mu)
 M_mean$cluster = as.factor(1:4)
 M_mean_melt = melt(M_mean, id.vars = "cluster")
 # add color label for omics layer
@@ -290,7 +303,7 @@ This figure, the y-axis represents the estimated mean expression level for each 
 #================================================================#
 ## 6. Exposure profiles for  each cluster predicted by LUCID    ##
 #================================================================#
-E_mean = as.data.frame(fit_try2$pars$beta[, -1])
+E_mean = as.data.frame(fit_try2$res_Beta[, -1])
 E_mean$cluster = as.factor(1:4)
 E_mean_melt = melt(E_mean, id.vars = "cluster")
 ggplot(E_mean_melt, aes(fill = variable, y = value, x = variable)) +
@@ -317,6 +330,95 @@ In the analysis above, we conducted early integration for multi-omics data by co
 4. **Serum metabolites**: column 27 to 203, `dat[, 27:203]`
 5. **Urine metabolites**: column 204 to 247, `dat[, 204:247]`
 6. **Proteins**: column 248 to 283, `dat[, 248:283]`
+
+## Intermediate and Late Integration
+![DAGs of LUCID Models](figure/fig_3luciddag.png)
+
+Three DAGs represent how three different types of the LUCID model integrate ge-
+netic/environmental exposures (G), other multi-omics data (Z), and the phenotype trait (Y). (a)
+LUCID early integration; (b) LUCID in parallel; (c) LUCID in serial. 
+
+In the previous sections, we focus on using the early integration strategy by concatenating each omic layer one by one and inputting a single data matrix into the LUCID model for estimation. However, researchers may be interested in modeling the correlation structure of each omic layer independently to investigate how multi-omics data may act in parallel with an outcome. Recent advancement of the LUCIDus package allows us to do it.
+
+```{r}
+#================================================================#
+## 7. Group different omic layers for selected omics features   ##
+#================================================================#
+omics_selected = as.data.frame(omics_selected)
+# Extract serum features
+S_metab <- omics_selected[, grep("^serum", names(omics_selected), value = TRUE)]
+
+# Extract urine features
+U_metab <- omics_selected[, grep("^urine", names(omics_selected), value = TRUE)]
+
+# Extract Protein features
+Proteins <- omics_selected[,names(omics_selected)[!grepl("^serum|^urine", names(omics_selected))]]
+
+#Put them in a list
+omics_selected_list <- list(as.matrix(S_metab), as.matrix(U_metab), as.matrix(Proteins))
+```
+
+
+```{r}
+#================================================================#
+## 8. Intermediate Integration: LUCID in Parallel    ##
+#================================================================#
+
+#Here, since we have a small number of features in each layer, we don't use regularity
+fit_try3 = estimate_lucid(G = exposure, 
+                     Z = omics_selected_list, 
+                     Y = outcome, 
+                     CoY = covariate,
+                     useY = FALSE,  
+                     K = c(2,2,2), #2 latent cluster for each layer
+                     family = "normal",
+                     lucid_model = "parallel")
+#get the summary table of the model
+#print.sumlucid(summary_lucid(fit_try3))
+
+#add a prefic for proteins features as they don't have a common pattern
+fit_try3$var.names$Znames[[3]] <- paste("protein", fit_try3$var.names$Znames[[3]], sep = "_")
+
+#visualize LUCID in parallel
+#Sankey Diagram
+plot_lucid_in_parallel_plotly(fit_try3, 
+                              sankey_colors = sankey_colors_parallel,
+                              text_size = 10,
+                              n_z_ftrs_to_plot = c(7,7,7))
+#omics profile
+plot_omics_profiles(fit_try3, "intermediate",pattern_list = list("serum","urine","protein"), omics_list = list("serum","urine","protein"))
+```
+
+In a more late integration framework, LUCID can also be extended to incorporate multiple latent variables in a serial fashion if researchers believe that given an exposure, multi-omics data act serially through a multistep process towards the outcome. This framework can accommodate the following situations: (1) longitudinal measurements on the same multi-omics data type and (2) biological relationship of multi-omics data. The estimation of latent clusters for each omic layer can be formulated as an unsupervised LUCID early integration or LUCID in parallel sub-model.
+
+```{r}
+#================================================================#
+## 9. Late Integration: LUCID in Serial   ##
+#================================================================#
+#Here, since we have a small number of features in each layer, we don't use regularity
+fit_try4 = estimate_lucid(G = exposure, 
+                     Z = omics_selected_list, 
+                     Y = outcome, 
+                     CoY = covariate,
+                     useY = FALSE,  
+                     K = c(2,2,2), #2 latent cluster for each layer
+                     family = "normal",
+                     lucid_model = "serial")
+#get the summary table of the model
+#print.sumlucid(summary_lucid(fit_try4))
+
+#add a prefic for proteins features as they don't have a common pattern
+
+fit_try4$var.names$Znames[[3]] <- paste("protein", fit_try4$var.names$Znames[[3]], sep = "_")
+
+#visualize LUCID in parallel
+#Sankey Diagram
+sankey_in_serial(fit_try4,
+                 color_pal_sankey_serial,
+                 text_size = 10)
+#omics profile
+plot_omics_profiles(fit_try4, "late",pattern_list = list("serum","urine","protein"), omics_list = list("serum","urine","protein"))
+```
 
 ## Reference
 1. Peng, C., Wang, J., Asante, I., Louie, S., Jin, R., Chatzi, L., Casey, G., Thomas, D.C., and Conti, D.V. (2019). A Latent Unknown Clustering Integrating Multi-Omics Data (LUCID) with Phenotypic Traits. Bioinformatics.

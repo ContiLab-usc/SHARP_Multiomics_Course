@@ -82,7 +82,9 @@ med_multiple_hima = hima(X = dat$hs_hcb_cadj_Log2,
                          Y = dat$hs_zbmi_who,
                          M = omics,
                          Y.family = "gaussian",
-                         penalty = "MCP")
+                         penalty = "MCP",
+                         COV.XM = dat[,c(20, 22)], #adjust for potential confounders
+                         verbose = TRUE)
 # rename the column names for results from HIMA, in order to match the notations from slides
 colnames(med_multiple_hima) = colnames(med_multiple_hima)[c(1, 3, 2, 4:7)]
 colnames(med_multiple_hima)[4] = "alpha*gamma"

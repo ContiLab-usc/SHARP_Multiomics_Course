@@ -36,7 +36,6 @@ if (!requireNamespace("lavaan", quietly = TRUE)) install.packages("lavaan")
 if (!requireNamespace("RGCCA", quietly = TRUE)) install.packages("RGCCA")
 if (!requireNamespace("LUCIDus", quietly = TRUE)) install.packages("LUCIDus")
 if (!requireNamespace("rsvd", quietly = TRUE)) install.packages("rsvd")
-if (!requireNamespace("IntNMF", quietly = TRUE)) install.packages("IntNMF")
 if (!requireNamespace("pls", quietly = TRUE)) install.packages("pls")
 if (!requireNamespace("summarytools", quietly = TRUE)) install.packages("summarytools")
 if (!requireNamespace("UpSetR", quietly = TRUE)) install.packages("UpSetR")
@@ -55,5 +54,6 @@ BiocManager::install("mogsa")
 install.packages("devtools")
 # devtools install 
 devtools::install_github("kupietz/kableExtra")
+if (!requireNamespace("IntNMF", quietly = TRUE)) install.packages("IntNMF")
 
 

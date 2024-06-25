@@ -1481,7 +1481,7 @@ border-radius: 0px;
 <h1 class="title toc-ignore">SHARP Multi-omics Workshop: Mediation
 Analysis</h1>
 <h4 class="author">Yinqi Zhao, David Conti</h4>
-<h4 class="date">2023-06-04 19:59:20.137329</h4>
+<h4 class="date">2024-05-30 22:39:43.546299</h4>
 
 </div>
 
@@ -1757,11 +1757,11 @@ analysis. The number of replication can be changed by the parameter
 ## 
 ## Nonparametric Bootstrap Confidence Intervals with the Percentile Method
 ## 
-##                Estimate 95% CI Lower 95% CI Upper p-value   
-## ACME             0.0242       0.0078         0.05    0.01 **
-## ADE              0.0430      -0.0122         0.09    0.10 . 
-## Total Effect     0.0672       0.0101         0.13    0.01 **
-## Prop. Mediated   0.3598       0.1305         1.46    0.02 * 
+##                Estimate 95% CI Lower 95% CI Upper p-value    
+## ACME            0.02416      0.00939         0.05    0.01 ** 
+## ADE             0.04299     -0.00752         0.09    0.13    
+## Total Effect    0.06715      0.01959         0.13  &lt;2e-16 ***
+## Prop. Mediated  0.35979      0.10669         1.30    0.01 ** 
 ## ---
 ## Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
 ## 
@@ -1830,7 +1830,7 @@ M1 ~~ M2
 &#39;
 med_multiple_M &lt;- sem(model = multipleMediation, data = dat2)
 summary(med_multiple_M)</code></pre>
-<pre><code>## lavaan 0.6.15 ended normally after 13 iterations
+<pre><code>## lavaan 0.6.17 ended normally after 11 iterations
 ## 
 ##   Estimator                                         ML
 ##   Optimization method                           NLMINB
@@ -1915,7 +1915,7 @@ indirect1 == indirect2
 &#39;
 med_multiple_M2 &lt;- sem(model = constrainedMediation, data = dat2)
 summary(med_multiple_M2)</code></pre>
-<pre><code>## lavaan 0.6.15 ended normally after 54 iterations
+<pre><code>## lavaan 0.6.17 ended normally after 51 iterations
 ## 
 ##   Estimator                                         ML
 ##   Optimization method                           NLMINB

@@ -351,7 +351,7 @@ display: none;
 
 <h1 class="title toc-ignore">PRS and Summary Statistics Analyses</h1>
 <h4 class="author">Nicholas Mancuso</h4>
-<h4 class="date">6/23/2022</h4>
+<h4 class="date">6/12/2024</h4>
 
 </div>
 
@@ -442,7 +442,7 @@ selected!) resulting in a mixture of two truncated distributions.</p>
 cad_url &lt;- &quot;http://ftp.ebi.ac.uk/pub/databases/spot/pgs/scores/PGS000337/ScoringFiles/PGS000337.txt.gz&quot;
 #cad_url &lt;- &quot;PGS000337.txt.gz&quot;
 # contains a header with comments indicated by &#39;#&#39;; let&#39;s skip those for now
-df_prs &lt;- readr::read_table2(cad_url, comment = &quot;#&quot;)
+df_prs &lt;- readr::read_table(cad_url, comment = &quot;#&quot;)
 
 # print the first few rows and tibble info
 df_prs</code></pre>
@@ -538,7 +538,8 @@ df_geuv_f</code></pre>
 ##  9 HG00096 0.0000471 0.00992 -0.0268 0.0120 0.0188 -0.000851 ENSG000001…  0.516 
 ## 10 HG00096 0.0000471 0.00992 -0.0268 0.0120 0.0188 -0.000851 ENSG000000…  0.273 
 ## # ℹ 52,945 more rows</code></pre>
-<pre class="r"><code>df_scan &lt;- df_geuv_f %&gt;% 
+<pre class="r"><code># for each gene: fit a linear regression of gene expression levels on PRS_CAD while adjusting for PC1-5
+df_scan &lt;- df_geuv_f %&gt;% 
   group_by(Gene) %&gt;% 
   do(broom::tidy(lm(value ~ PRS_CAD + PC1 + PC2 + PC3 + PC4 + PC5, data=.))) %&gt;%
   filter(term == &quot;PRS_CAD&quot;) %&gt;%
@@ -628,11 +629,11 @@ and 261,984 controls of UK Biobank resource followed by replication in
 </div>
 <div id="mv-mr-analysis-of-cad" class="section level3">
 <h3>3.4 MV MR Analysis of CAD</h3>
-<p>I’ve downloaded and prepared metabolite data for
-<code>met-d-bOHbutyrate</code>, <code>met-d-DHA</code>,
-<code>met-d-M_HDL_PL_pct</code>, and <code>met-d-S_HDL_PL_pct</code>
-along with corresponding CAD effect-size estimates and standard
-errors.</p>
+<p>I’ve downloaded and prepared metabolite data for <span class="math inline">\(\beta\)</span>-Hydroxybutyrate
+<code>met-d-bOHbutyrate</code>, DHA <code>met-d-DHA</code>, medium-sized
+HDL particles <code>met-d-M_HDL_PL_pct</code>, and small HDL particles
+<code>met-d-S_HDL_PL_pct</code> along with corresponding CAD effect-size
+estimates and standard errors.</p>
 <pre class="r"><code>load(&quot;MVMR.RData&quot;)
 
 df_beta</code></pre>

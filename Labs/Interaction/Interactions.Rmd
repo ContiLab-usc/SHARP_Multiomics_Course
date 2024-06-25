@@ -35,6 +35,7 @@ library(nnet)
 
 # following sets wd for running chunks of R code
 setwd("/cloud/project/Labs/Interaction/")
+#setwd("/Users/danielrud/Desktop/USC/SHARP")
 
 options(knitr.table.format = "html")
 knitr::opts_chunk$set(echo = TRUE)
@@ -76,6 +77,8 @@ The HELIX study is a collaborative project across six longitudinal population-ba
 * exposure + genomic data from children 6-11 years old
 * N = 1,122 with complete data
 * investigate interactions between fetal alcohol/tobacco exposure and genetic variants, and their influence on childhood BMI
+
+Note that the genomic data used in this example is simulated.  
 
 **Variables of interest:**    
 
@@ -308,9 +311,8 @@ The interaction term `e3_alcpreg_yn_None1:SNP.1` has p.value = 0.47. Cannot reje
 
 Case-only models can be more powerful than traditional logistic regression models, provided the assumption of G-E independence in the population is met.  
 
-One can use a polytomous logistic regression model with form $$logit(Pr G=g|E, D=1) = \gamma_0 + \gamma_1 + \gamma_EE$$
+One can use a logistic regression model with form $$logit(Pr \ E=1|G, D=1) = \gamma_0 + \gamma_GG$$
 
-or approximate this using a linear model with form $$G = \gamma_0 + \gamma_EE$$
 
 ```{r}
 caseonly <- which(dataset$hs_bmi_c_cat == "Overweight/Obese")
@@ -319,7 +321,7 @@ SNP.1 <- (X[,1][caseonly])
 dataset_caseonly <- dataset[caseonly, ]
 
 # model_caseonly <- multinom(SNP.1 ~ e3_alcpreg_yn_None + h_age_None + h_mbmi_None +  h_cohort + h_edumc_None + e3_sex_None + ethn_PC1 + ethn_PC2, data = dataset_caseonly)
-model_caseonly <- lm(SNP.1 ~ e3_alcpreg_yn_None + h_age_None + h_mbmi_None +  h_cohort + h_edumc_None + e3_sex_None + ethn_PC1 + ethn_PC2, data = dataset_caseonly)
+model_caseonly <- glm(e3_alcpreg_yn_None ~ SNP.1 + h_age_None + h_mbmi_None +  h_cohort + h_edumc_None + e3_sex_None + ethn_PC1 + ethn_PC2, family = binomial, data = dataset_caseonly)
 
 kable(tidy(model_caseonly), digits = 2) %>% 
   kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = 'left')
@@ -460,7 +462,7 @@ library(BinaryDosage)
 starttime <- Sys.time()
 x <- getbdinfo("./data/alcohol.bdose")
 endtime <- Sys.time()
-starttime - endtime
+endtime - starttime
 
 
 
@@ -568,11 +570,11 @@ plot(1:nrow(output), neglog.pvalues,
 abline(h=-log10(0.05/nrow(output)), lty=2, lwd=2, col=2)
 ```
 
-### Example - joint G, GxE, G|E (case+control) test (3DF)
+### Example - joint G, GxE, G vs E (case+control) test (3DF)
 
 Test the hypothesis $\beta_G = \beta_{GxE} = \gamma_G = 0$
 
-where $\gamma_0$ is the G|E association in combined case/control sample (see Murcray 2009, Gauderman 2019)
+where $\gamma_G$ is the G vs E association in combined case/control sample (see Murcray 2009, Gauderman 2019)
 
 ```{r}
 pvalues <- pchisq(output[, 'lrt3df'], df = 3, lower.tail = F)
@@ -591,7 +593,7 @@ abline(h=-log10(0.05/nrow(output)), lty=2, lwd=2, col=2)
 
 ### Two-step methods 
 
-We can use marginal statistics (G|D main effect) to filter SNPs prior to conducting GxE testing. For example, filter SNPs based on their D|G statistic at a $\alpha < 0.05$ level:  
+We can use marginal statistics (D|G main effect) to filter SNPs prior to conducting GxE testing. For example, filter SNPs based on their D|G statistic at a $\alpha < 0.05$ level:  
 
 ```{r}
 

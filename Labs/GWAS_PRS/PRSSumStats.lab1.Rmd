@@ -1,7 +1,7 @@
 ---
 title: "PRS and Summary Statistics Analyses"
 author: "Nicholas Mancuso"
-date: "6/23/2022"
+date: "6/12/2024"
 output: html_document
 ---
 ```{css, echo=FALSE}
@@ -91,7 +91,7 @@ distributions.
 cad_url <- "http://ftp.ebi.ac.uk/pub/databases/spot/pgs/scores/PGS000337/ScoringFiles/PGS000337.txt.gz"
 #cad_url <- "PGS000337.txt.gz"
 # contains a header with comments indicated by '#'; let's skip those for now
-df_prs <- readr::read_table2(cad_url, comment = "#")
+df_prs <- readr::read_table(cad_url, comment = "#")
 
 # print the first few rows and tibble info
 df_prs
@@ -138,6 +138,7 @@ PCs to adjust our PRS estimates.
 # inspect compiled tibble
 df_geuv_f
 
+# for each gene: fit a linear regression of gene expression levels on PRS_CAD while adjusting for PC1-5
 df_scan <- df_geuv_f %>% 
   group_by(Gene) %>% 
   do(broom::tidy(lm(value ~ PRS_CAD + PC1 + PC2 + PC3 + PC4 + PC5, data=.))) %>%
@@ -213,8 +214,8 @@ study on coronary artery disease (CAD). They performed large-scale CAD GWAS usin
 in 88,192 cases and 162,544 controls from CARDIoGRAMplusC4D.
 
 ### 3.4 MV MR Analysis of CAD
-I've downloaded and prepared metabolite data for `met-d-bOHbutyrate`, 
-`met-d-DHA`, `met-d-M_HDL_PL_pct`, and `met-d-S_HDL_PL_pct` along with corresponding
+I've downloaded and prepared metabolite data for $\beta$-Hydroxybutyrate `met-d-bOHbutyrate`, DHA 
+`met-d-DHA`, medium-sized HDL particles `met-d-M_HDL_PL_pct`, and small HDL particles `met-d-S_HDL_PL_pct` along with corresponding
 CAD effect-size estimates and standard errors.
 ```{r, echo=TRUE, message=FALSE}
 load("MVMR.RData")
