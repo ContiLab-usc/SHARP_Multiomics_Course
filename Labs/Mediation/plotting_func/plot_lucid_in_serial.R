@@ -1,5 +1,3 @@
-## ---- plot_LUCID_in_Serial ----
-#' Plot Sankey Diagram for LUCID in late integration
 
 # Get sankey dataframe
 get_sankey_df <- function(x,
@@ -184,9 +182,9 @@ sankey_in_serial <- function(lucid_fit, color_pal_sankey, text_size = 15) {
         target == names_clusters_2$name_og[2] ~ names_clusters_2$name_new[2], 
         TRUE ~ target)) %>%
     filter(target != "outcome")
-
-    lnks2_miRNA_new[1,1]  = "<b>Serum metabolites\nProfile 0</b>"
-    lnks2_miRNA_new[2,1]  = "<b>Serum metabolites\nProfile 1</b>"
+  
+  lnks2_miRNA_new[1,1]  = "<b>Serum metabolites\nProfile 0</b>"
+  lnks2_miRNA_new[2,1]  = "<b>Serum metabolites\nProfile 1</b>"
   ## 3.3 Change node names ----
   nodes2_miRNA_new <- sankey_dat2[["nodes"]] %>% 
     mutate(
@@ -230,8 +228,8 @@ sankey_in_serial <- function(lucid_fit, color_pal_sankey, text_size = 15) {
         target == names_clusters_3$name_og[2] ~ names_clusters_3$name_new[2], 
         TRUE ~ target))
   
-    lnks3_RNA_new[1,1] = "<b>Urine metabolites\nProfile 0</b>"
-    lnks3_RNA_new[2,1] = "<b>Urine metabolites\nProfile 1</b>"
+  lnks3_RNA_new[1,1] = "<b>Urine metabolites\nProfile 0</b>"
+  lnks3_RNA_new[2,1] = "<b>Urine metabolites\nProfile 1</b>"
   ## 4.3 Change node names ----
   nodes3_RNA_new <- sankey_dat3[["nodes"]] %>% 
     mutate(
@@ -278,7 +276,7 @@ sankey_in_serial <- function(lucid_fit, color_pal_sankey, text_size = 15) {
   
   links_all <- links_all_1 
   
-
+  
   
   
   ### 5.1.2 Get new source and target IDs ----
@@ -331,7 +329,7 @@ sankey_in_serial <- function(lucid_fit, color_pal_sankey, text_size = 15) {
       link_color = case_when(
         str_detect(target, "outcome") &  group == TRUE  ~  "red",
         str_detect(target, "outcome") &  group == FALSE  ~  "#d9d2e9",
-
+        
         str_detect(target, "<b>Serum metabolites\nProfile 1</b>") &  group == TRUE  ~  "red",
         str_detect(target, "<b>Serum metabolites\nProfile 1</b>") &  group == FALSE  ~  "#d9d2e9",
         
@@ -406,12 +404,12 @@ sankey_in_serial <- function(lucid_fit, color_pal_sankey, text_size = 15) {
 
 col_pal <- RColorBrewer::brewer.pal(n = 8, name = "Dark2")
 color_pal_sankey_serial <- matrix(c("exposure", col_pal[6],
-                             "lc",       "#b3d8ff",
-                             "RNA",      col_pal[1],
-                             "Methylation",       col_pal[2],
-                             "miRNA",  col_pal[3],
-                             "outcome",  "grey"), 
-                           ncol = 2, byrow = TRUE) %>%
+                                    "lc",       "#b3d8ff",
+                                    "RNA",      col_pal[1],
+                                    "Methylation",       col_pal[2],
+                                    "miRNA",  col_pal[3],
+                                    "outcome",  "grey"), 
+                                  ncol = 2, byrow = TRUE) %>%
   as_tibble(.name_repair = "unique") %>% 
   janitor::clean_names() %>%
   dplyr::rename(group = x1, color = x2)

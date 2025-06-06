@@ -35,12 +35,10 @@ library(nnet)
 
 # following sets wd for running chunks of R code
 setwd("/cloud/project/Labs/Interaction/")
-#setwd("/Users/danielrud/Desktop/USC/SHARP")
 
 options(knitr.table.format = "html")
 knitr::opts_chunk$set(echo = TRUE)
-# # following needed to set wd when knitting Rmarkdown (Rmd does not recognize above setwd for some reason)
-# knitr::opts_knit$set(root.dir = "C:/jim/OmicsSummerWorkshop/2022/LabGxE/")
+
 
 # suppress warning messages for final rendering
 old.warn <- getOption("warn")
@@ -275,7 +273,7 @@ ggplot(data = melted_cormat, aes(Var2, Var1, fill = value))+
 
 ## Simple interaction model
 
-Most commonly used method for testing for interaction - fit traditional logistic regression model with interaction term in the form $$logit(Pr D=1|G,E) = \alpha + \beta_EE + \beta_GG + \beta_{GxE}G*E$$
+Most commonly used method for testing for interaction - fit traditional logistic regression model with interaction term in the form $$logit\left(P(D=1|G,E)\right) = \alpha + \beta_EE + \beta_GG + \beta_{GxE}G\times E$$
 
 $H0:\beta_{GxE} = 0$ is equivalent to testing $\frac{OR_{GxE}}{OR_G*OR_E} = 1$ e.g. departure from multiplicative scale interaction    
 
@@ -311,7 +309,7 @@ The interaction term `e3_alcpreg_yn_None1:SNP.1` has p.value = 0.47. Cannot reje
 
 Case-only models can be more powerful than traditional logistic regression models, provided the assumption of G-E independence in the population is met.  
 
-One can use a logistic regression model with form $$logit(Pr \ E=1|G, D=1) = \gamma_0 + \gamma_GG$$
+One can use a logistic regression model with form $$logit(P(E=1|G, D=1)) = \gamma_0 + \gamma_GG$$
 
 
 ```{r}
@@ -552,7 +550,7 @@ abline(h=-log10(0.05/nrow(output)), lty=2, lwd=2, col=2)
 
 2DF test (Kraft et al 2007)
 
-$$logit(Pr D=1|G,E) = \alpha + \beta_EE + \beta_GG + \beta_{GxE}G*E$$ 
+$$logit(P(D=1|G,E)) = \alpha + \beta_EE + \beta_GG + \beta_{GxE}G \times E$$ 
 where we test the hypothesis $\beta_G = \beta_{GxE} = 0$
 
 ```{r}

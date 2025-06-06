@@ -35,8 +35,8 @@ library(reshape2)
 library(networkD3)
 library(sm)
 library(plotly)
-#install.packages("janitor")
 library(janitor)
+library(dplyr)
 ```
 
 
@@ -86,73 +86,91 @@ exposure = dat[, 2:19]
 omics = scale(as.matrix(dat[, 27:ncol(dat)])) # scale the omics
 outcome = dat[, "hs_zbmi_who"]
 cova_names = c("h_mbmi_None", "e3_sex_None", "h_age_None", "h_cohort", "h_edumc_None")
+M_names = colnames(omics)
+expo_names = colnames(exposure)
 covariate = model.matrix(~., dat[, cova_names])[, -1]
 ```
 
 
 Next, we conduct a preliminary screening to decrease the number of omics variables to a moderate number. Here we use the idea of pairwise association between exposure and omics layer, and between omics layer and the outcome. This is similar to the "meet in the middle" approach we conducted in the previous lab. 
 ![Preliminary Screening](figure/preliminary_screening.png)
+### Balanced Omics Feature Selection Using Modified M-i-M (FDR = 0.1)
+
+We applied a two-step modified Meet-in-the-Middle (M-i-M) procedure to identify omics features that are both associated with exposures and predictive of the outcome. To ensure **equal representation across omics layers**, which was encouraged for early integration of multi-omics data. we selected **exactly 10 features per layer**, prioritizing exposure-responsive features but allowing fallback to top outcome-associated features when necessary.
+
+1. **Step 1 (X → M | Y):**  
+   For each omics layer, we test the association between each exposure and each omics feature, adjusting for the outcome and covariates. Features significantly associated with at least one exposure (FDR < 0.1) are flagged as exposure-responsive.
+
+2. **Step 2 (M → Y):**  
+   All features in each layer are tested for association with the outcome. Features are ranked by FDR-adjusted p-values. The top 10 per layer are selected, giving priority to exposure-responsive features but supplemented with top Y-associated features if needed.
+
+This approach ensures 30 final features (10 per layer), balancing statistical relevance and biological plausibility across omics types.
 ```{r}
-#===========================================#
-## 2. preliminary screening for omics data ##
-#===========================================#
-# 1.1 E and Y
-expo_names = colnames(exposure)
-res_E_Y = NULL
-for (i in 1:length(expo_names)) {
-  temp_fit = lm(as.formula(paste("hs_zbmi_who ~", expo_names[i], " + ", paste(cova_names, collapse = " + "))), 
-                data = dat)
-  temp_sum = summary(temp_fit)
-  res_E_Y = rbind(res_E_Y, temp_sum$coefficients[2, ])
+
+#===========================#
+## Group omics by layer    ##
+#===========================#
+omics <- as.data.frame(omics)
+S_metab <- omics[, grep("^serum", names(omics), value = TRUE)]
+U_metab <- omics[, grep("^urine", names(omics), value = TRUE)]
+Proteins <- omics[, setdiff(names(omics), c(names(S_metab), names(U_metab)))]
+
+omics_layers <- list(
+  serum = as.matrix(S_metab),
+  urine = as.matrix(U_metab),
+  protein = as.matrix(Proteins)
+)
+
+#===========================#
+## Layer-wise selection    ##
+#===========================#
+selected_M_by_layer <- list()
+
+for (layer in names(omics_layers)) {
+  layer_data <- omics_layers[[layer]]
+  layer_M_names <- colnames(layer_data)
+  
+  ## Step 1: Exposure → M | Y
+  res_M_E_list <- lapply(layer_M_names, function(m) {
+    lapply(expo_names, function(e) {
+      f <- as.formula(paste(m, "~", e, "+ hs_zbmi_who +", paste(cova_names, collapse = "+")))
+      coefs <- summary(lm(f, data = dat))$coefficients
+      data.frame(M = m, E = e, est = coefs[2, 1], p = coefs[2, 4])
+    })
+  })
+  res_M_E <- do.call(rbind, unlist(res_M_E_list, recursive = FALSE))
+  res_M_E$p.adj <- p.adjust(res_M_E$p, method = "fdr")
+  
+  responsive_M <- unique(res_M_E$M[res_M_E$p.adj < 0.1])
+  
+  ## Step 2: M → Y (on all features in the layer)
+  res_M_Y_list <- lapply(layer_M_names, function(m) {
+    f <- as.formula(paste("hs_zbmi_who ~", m, "+", paste(cova_names, collapse = "+")))
+    coefs <- summary(lm(f, data = dat))$coefficients
+    data.frame(M = m, p = coefs[2, 4])
+  })
+  res_M_Y <- do.call(rbind, res_M_Y_list)
+  res_M_Y$p_fdr <- p.adjust(res_M_Y$p, method = "fdr")
+  
+  ## Prioritize responsive M, fill to 10
+  res_M_Y <- res_M_Y %>%
+    arrange(p_fdr) %>%
+    mutate(priority = ifelse(M %in% responsive_M, 1, 2)) %>%
+    arrange(priority, p_fdr)
+  
+  top10 <- head(res_M_Y$M, 10)
+  selected_M_by_layer[[layer]] <- top10
 }
-rownames(res_E_Y) = expo_names
 
-
-# 1.2 M and Y
-M_names = colnames(omics)
-res_M_Y = NULL
-for (i in 1:length(M_names)) {
-  temp_fit = lm(as.formula(paste("hs_zbmi_who ~", M_names[i], " + ", paste(cova_names, collapse = " + "))), 
-                data = dat)
-  temp_sum = summary(temp_fit)
-  res_M_Y = rbind(res_M_Y, temp_sum$coefficients[2, ])
-}
-rownames(res_M_Y) = M_names
-p_adj1 = p.adjust(res_M_Y[, 4], method = "fdr")
-res_M_Y = cbind(res_M_Y, p_adj1)
-colnames(res_M_Y)[5] = "p_fdr"
-
-
-# 1.3 E and M
-res_M_E = NULL
-for (i in 1:length(M_names)) {
-  for (j in 1:length(expo_names)) {
-    temp_fit = lm(as.formula(paste(M_names[i], "~", expo_names[j], "+", paste(cova_names, collapse = " +"))),
-                  data = dat)
-    temp_sum = data.frame(est = summary(temp_fit)$coefficients[2, 1],
-                          p = summary(temp_fit)$coefficients[2, 4])
-    temp_sum$M = M_names[i]
-    temp_sum$E = expo_names[j]
-    res_M_E = rbind(res_M_E, temp_sum)
-  }
-}
-res_M_E$p.adj = p.adjust(res_M_E$p, method = "fdr")
-
-
-# 1. M should be significantly associated with at least 1 exposure
-# 2. M should be significantly associated with the outcome
-# cutoff: fdr = 0.1
-name1 = unique(rownames(res_M_Y)[res_M_Y[, 5] < 0.1])
-name2 = unique(res_M_E$M[res_M_E$p.adj < 0.1])
-common_name = intersect(name1, name2) 
-length(common_name) # 45 metabolites passed preliminary screening
-omics_selected = omics[, common_name]
+# Final selected omics features across all layers
+selected_M <- unlist(selected_M_by_layer)
+cat("Total selected features:", length(selected_M), "\n")  # Should be 30
 ```
-The preliminary screening selected 45 metabolites out of 257 omcis variables.
+The preliminary screening selected 30 omics out of 257 omcis variables.
 
 ### 6.2 Conduct variable selection
 ![Integrated Selection](figure/integrated_selection.png)
-After preliminary screening, 45 proteins or metabolites are selected. The number is still moderately large and we hope to further decrease the number of omics variables to facilitate interpretation of the LUCID model. LUCID comes with an integrated variable selection based on $L_1$ penalties. Next, we show how to tune penalty terms for LUCID and conduct integrated variable selection.
+After preliminary screening, 101 proteins or metabolites are selected. The number is still moderately large and we hope to further decrease the number of omics variables to facilitate interpretation of the LUCID model. LUCID comes with an integrated variable selection based on $L_1$ penalties. Next, we show how to tune penalty terms for LUCID and conduct integrated variable selection.
 
 ```{r, results='hide'}
 #===================================#
@@ -170,10 +188,10 @@ After preliminary screening, 45 proteins or metabolites are selected. The number
 #                     Z = omics_selected,
 #                     Y = outcome,
 #                     CoY = covariate,
-#                     Rho_G = c(0.005, 0.01),
-#                     Rho_Z_Mu = c(30, 40, 50),
-#                     Rho_Z_Cov = c(0.1, 0.2, 0.3),
-#                     K = 4,
+#                     Rho_G = c(0, 0.05, 0.1),
+#                     Rho_Z_Mu = c(0.05, 0.1, 0.15),
+#                     Rho_Z_Cov = c(0.05, 0.1, 0.15),
+#                     K = c(2:4),
 #                     lucid_model = "early",
 #                     init_omic.data.model = NULL)
 
@@ -182,37 +200,45 @@ After preliminary screening, 45 proteins or metabolites are selected. The number
 
 # step 2: integrated variable selections
 #==========================================================================
-#  optimal model: K = 4, Rho_Z_Cov = 0.1, Rho_Z_Mu = 50, Rho_G = 0.01
+#  optimal model: K = 4, Rho_Z_Cov = 0.05, Rho_Z_Mu = 0.05, Rho_G = 0.0
 #==========================================================================
 set.seed(123)
-fit_try1 = estimate_lucid(G = exposure, 
-                     Z = omics_selected, 
-                     Y = outcome, 
-                     CoY = covariate,
-                     useY = FALSE, 
-                     K = 4,
-                     family = "normal",
-                     Rho_Z_Cov = 0.1, 
-                     Rho_Z_Mu = 50,
-                     Rho_G = 0.01,
-                     lucid_model = "early",
-                     init_omic.data.model = NULL)
-# refit the model with the selected features
+# Fit the LUCID model with early integration, using selected exposures and omics features
+fit_try1 <- estimate_lucid(
+  G = exposure,     # G: matrix of selected exposures (e.g., environmental variables)
+  Z = omics[, selected_M],                # Z: matrix of selected omics features (e.g., metabolites)
+  Y = outcome,                            # Y: outcome variable (e.g., BMI z-score)
+  CoY = covariate,                        # CoY: covariates to adjust for in the Y model (e.g., age, sex, etc.)
+  useY = FALSE,                            # Whether to use Y during model fitting (TRUE = supervised clustering)
+  K = 4,                                  # Number of latent clusters to estimate
+  family = "normal",                      # Distribution family for outcome Y ("normal" for continuous outcomes)
+  Rho_Z_Cov = 0.1,                        # Penalty parameter for the covariance matrix of Z (encourages sparsity)
+  Rho_Z_Mu = 1,                           # Penalty parameter for the cluster-specific mean of Z (for feature selection)
+  Rho_G = 0,                              # Penalty parameter for the effect of G on cluster membership (0 = no penalty)
+  lucid_model = "early",                 # Integration strategy: "early" = joint modeling of G, Z, and Y
+  init_omic.data.model = NULL,           # Optional: specify mclust model for Z; NULL lets mclust choose the best model,
+)
+#check how many omics are selected out of 30
+sum(fit_try1$select$selectZ)
+#88 were selected
+
+# refit the model with the selected features, we don't need penalty for this
+
 set.seed(123)
-fit_try2 = estimate_lucid(G = exposure[, fit_try1$select$selectG],
-                     Z = omics_selected[, fit_try1$select$selectZ],
+fit_try2 = estimate_lucid(G = exposure,
+                     Z = omics[, selected_M][, fit_try1$select$selectZ],
                      Y = outcome, 
                      CoY = covariate,
                      useY = FALSE, 
                      K = 4, 
                      family = "normal", 
                      lucid_model = "early",
-                     init_omic.data.model = NULL)
+                     init_omic.data.model = fit_try1$init_omic.data.model)
 ```
 
-`summary_lucid` summarizes LUCID model and print out a table explaining associations among each components of LUCID. This summary table is very useful when a few number of environmental/genetic exposures and omic variables are included. Otherwise, it's better to interpret LUCID model through a Sankey diagram, as we'll show later.
+`summary` summarizes LUCID model and print out a table explaining associations among each components of LUCID. This summary table is very useful when a few number of environmental/genetic exposures and omic variables are included. Otherwise, it's better to interpret LUCID model through a Sankey diagram, as we'll show later.
 ```{r}
-print.sumlucid(summary_lucid(fit_try2))
+summary(fit_try1)
 ```
 
 ### 6.3 Prediction of LUCID model
@@ -220,8 +246,8 @@ After fitting the LUCID model with selected features, we can predict the cluster
 ```{r}
 # prediction of LUCID model
 pred_fit_try2 = predict_lucid(model = fit_try2, 
-                              G = exposure[, fit_try1$select$selectG],
-                              Z = omics_selected[, fit_try1$select$selectZ],
+                              G = exposure,
+                              Z = omics[, selected_M][, fit_try1$select$selectZ],
                               CoY = covariate,
                               lucid_model = "early")
 # prediction on latent cluster
@@ -236,17 +262,20 @@ LUCID uses a Sankey diagram to visualize the complex associations among differen
 #===================================#
 ## 3. visualize the LUCID model    ##
 #===================================#
+
+# Since there are still a high number of omics features (88) included in the final LUCID model, we can only visualize top 10 omics features based on the absolute values of differnce across the 2 clusters
+
 # 1. use internal plot function
-plot_lucid(fit_try2)
+plot(fit_try2)
 # 2. personalize color
 # user can personalize colors of node and link
-plot_lucid(fit_try2,
-           G_color = "red",
-           X_color = "blue",
-           Z_color = "green",
-           Y_color = "black",
-           pos_link_color = "orange",
-           neg_link_color = "gray")
+plot(fit_try2,
+     G_color = "red",
+     X_color = "blue",
+     Z_color = "green",
+     Y_color = "black",
+     pos_link_color = "orange",
+     neg_link_color = "gray")
 ```
 
 
@@ -267,7 +296,7 @@ ggplot(Y_fit_try2, aes(x = as.factor(cluster),
   ylab("z-bmi")
 ```
 
-To interpret the clustering results of LUCID, we can create box plot of BMI z-score for each latent luster. From the boxplot, we observe an increasing trend of BMI from cluster 1 to cluster 4. In other words, children belonging to cluster 4 are at high risk of obesity.
+To interpret the clustering results of LUCID, we can create box plot of BMI z-score for each latent luster. From the boxplot, we observe that children belonging to cluster 4 are at high risk of obesity while the first 3 clsuters tend to have a similar averaged BMI z-score.
 
 #### Omics profiles for each identified cluster
 ![Outcome profiles](figure/result2.png)
@@ -318,8 +347,16 @@ ggplot(E_mean_melt, aes(fill = variable, y = value, x = variable)) +
         axis.text.x = element_text(angle = 45, vjust = 1,
                                    hjust = 1))
 ```
+This figure displays the log odds ratios of exposures across the four latent clusters. Each bar represents the strength and direction of association between a specific exposure and cluster membership, adjusted for covariates.
 
-This figure shows the exposures profile for each cluster. The y axis represent the log odds ratio for each exposure. As you can see, exposure profile characterization is mainly driven by log odds ratio of HCB in the maternal and child plasma. Moving from cluster 2 to 4, log odds ratio of childhood HCB are decreasing. This confirmed previous HELIX publication results (Vrijheid EHP 2020) that childhood HCB exposure cross-sectionally associates with reduced childhood BMI-z score. Moving from cluster 2 to 4, log odds ratio of maternal HCB are increasing. This implies maternal HCB exposure increases BMI (obesogenic effect).
+Notably, hs_hcb_madj_Log2 (maternal HCB) shows a strong gradient across clusters, increasing from cluster 1 to cluster 4, suggesting it plays a key role in distinguishing exposure profiles. This trend supports a potential obesogenic effect of maternal HCB, supporting previous HELIX findings (Vrijheid et al., EHP 2020).
+
+Other exposures also contribute to the cluster structure, including:
+Cord HCB (hs_hcb_cadj_Log2), which decreases from cluster 2 to 4 linking higher early-life HCB exposure to lower BMI z-scores;
+PCBs 118, 138, and 153 in both maternal and cord plasma;
+And DDE/DDT, which also show moderate directional shifts across clusters.
+
+These patterns underscore the complex mixture structure of environmental exposures in this cohort, which LUCID early integration model helped to reveal. Rather than being driven by a single compound, the latent clusters reflect combinatorial signatures, with maternal HCB as a particular contributor. This highlights the value of mixture modeling approaches for identifying exposure profiles that may influence downstream health outcomes like BMI.
 
 ## Exploration
 In the analysis above, we conducted early integration for multi-omics data by concatenating three layers (serum metabolites, urine metabolites and proteins). What will results differ if we conduct late integration (analyzing each omic layer separately then combine the results?) You can pick the selected exposure or any exposure of interest.
@@ -344,7 +381,7 @@ In the previous sections, we focus on using the early integration strategy by co
 #================================================================#
 ## 7. Group different omic layers for selected omics features   ##
 #================================================================#
-omics_selected = as.data.frame(omics_selected)
+omics_selected = as.data.frame(omics[,selected_M])
 # Extract serum features
 S_metab <- omics_selected[, grep("^serum", names(omics_selected), value = TRUE)]
 
@@ -384,7 +421,7 @@ fit_try3$var.names$Znames[[3]] <- paste("protein", fit_try3$var.names$Znames[[3]
 plot_lucid_in_parallel_plotly(fit_try3, 
                               sankey_colors = sankey_colors_parallel,
                               text_size = 10,
-                              n_z_ftrs_to_plot = c(7,7,7))
+                              n_z_ftrs_to_plot = c(10,10,10))
 #omics profile
 plot_omics_profiles(fit_try3, "intermediate",pattern_list = list("serum","urine","protein"), omics_list = list("serum","urine","protein"))
 ```
@@ -411,8 +448,7 @@ fit_try4 = estimate_lucid(G = exposure,
 
 fit_try4$var.names$Znames[[3]] <- paste("protein", fit_try4$var.names$Znames[[3]], sep = "_")
 
-#visualize LUCID in parallel
-#Sankey Diagram
+#visualize LUCID in serial
 sankey_in_serial(fit_try4,
                  color_pal_sankey_serial,
                  text_size = 10)
@@ -422,4 +458,5 @@ plot_omics_profiles(fit_try4, "late",pattern_list = list("serum","urine","protei
 
 ## Reference
 1. Peng, C., Wang, J., Asante, I., Louie, S., Jin, R., Chatzi, L., Casey, G., Thomas, D.C., and Conti, D.V. (2019). A Latent Unknown Clustering Integrating Multi-Omics Data (LUCID) with Phenotypic Traits. Bioinformatics.
-2. Source codes for LUCIDus are hosted on https://github.com/USCbiostats/LUCIDus. It's also availabe on [CRAN](https://cloud.r-project.org/web/packages/LUCIDus/index.html)
+2. Zhao, Y., Jia, Q., Goodrich, J., Darst, B., and Conti, D.V. (2024). An Extension of Latent Unknown Clustering Integrating Multi-Omics Data (LUCID) Incorporating Incomplete Omics Data. Bioinformatics Advances. https://www.ncbi.nlm.nih.gov/pmc/articles/PMC11368387/
+3. Source codes for LUCIDus are hosted on https://github.com/USCbiostats/LUCIDus. It's also availabe on [CRAN](https://cloud.r-project.org/web/packages/LUCIDus/index.html)

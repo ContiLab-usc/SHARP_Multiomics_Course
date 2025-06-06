@@ -89,35 +89,74 @@ PRS.univariate <- T
 ```{r PRS: Processing the Data, echo=TRUE}
 load(paste0(work.dir, "/Labs/Data/HELIX.MultiAssayExperiment.RData"))
 
-# not recommended way of storing genomewide data
-variables <- c(covariate.Names, "h_ethnicity_cauc", PRS.SNP.names)  # pull only PRS related SNPs
-d <- wideFormat(intersectColumns(helix_ma[variables, ,]), colDataCols=outcome.Name) # 1) select variables but keep in MultiAssayExperiment format; 2) intersectionColumns selects only individuals with complete data; 3) wideFormat returns as a DataFrame
+## ------------------------------------------------------------------
+## 0. Make sure the rowList has *all* needed rows  -------------------
+##     (genome SNPs  +  five covariates  +  two PCs)
+## ------------------------------------------------------------------
+rowList <- list(
+  genome      = PRS.SNP.names,
+  covariates  = covariate.Names[1:5],                 # h_mbmi, sex, age, cohort, edu
+  proteome.cov = covariate.Names[6:7]                 # ethn_PC1, ethn_PC2
+)
 
+helix_sub <- subsetByRow(helix_ma, rowList)
+helix_sub <- intersectColumns(helix_sub)              # keeps only common samples
 
-# Create the outcome variable
-Y <- d[,outcome.Name] # outcome
-if(outcome.Name=="hs_bmi_c_cat") { Y <- ifelse(as.numeric(Y)>=3, 1, 0)}
+## ------------------------------------------------------------------
+## 1. Outcome --------------------------------------------------------
+## ------------------------------------------------------------------
+Y <- colData(helix_sub)[[outcome.Name]]
+if (outcome.Name == "hs_bmi_c_cat")
+  Y <- ifelse(as.numeric(Y) >= 3, 1, 0)
 
-# Create  design matrix
-X <- d[,paste0("genome_", PRS.SNP.names)]
-names(X) <- PRS.SNP.names
-X <- as.matrix(X)
+## ------------------------------------------------------------------
+## 2. Design matrix X  (PRS SNPs) -----------------------------------
+## ------------------------------------------------------------------
+sample_ids <- colnames(assays(helix_sub)$genome)      # from genome assay
+X <- assays(helix_sub)$genome[PRS.SNP.names, sample_ids] |>
+     as.matrix() |>                          #  rows = SNPs , cols = samples
+     t() |>                                  #  transpose → samples × SNPs
+     as.data.frame()                         #  base-R data.frame
 
+## tidy column names just in case
+colnames(X) <- PRS.SNP.names
 
-# Create the covariate design matrix
-U <- d[,c(paste0("covariates_", covariate.Names[1:5]), paste0("proteome.cov_", covariate.Names[6:7]))]
-names(U) <- covariate.Names
-U[,c("h_cohort","e3_sex_None","h_edumc_None")] <- lapply(U[,c("h_cohort","e3_sex_None","h_edumc_None")], factor)
-U[,c("h_mbmi_None", "h_age_None","ethn_PC1","ethn_PC2")] <- lapply(U[,c("h_mbmi_None", "h_age_None","ethn_PC1","ethn_PC2")], as.numeric)
-U <- model.matrix(as.formula(paste("~-1+", paste(covariate.Names, collapse="+"))), data=U) 
+## ------------------------------------------------------------------
+## 3. Covariate data-frame  -----------------------------------------
+## ------------------------------------------------------------------
 
+cov_main <- assays(helix_sub)$covariates[covariate.Names[1:5], sample_ids]
+cov_df   <- as.data.frame(t(as.matrix(cov_main)))     # now samples × 5
+pc_mat <- assays(helix_sub)$`proteome.cov`[covariate.Names[6:7], sample_ids]
+pc_df  <- as.data.frame(t(as.matrix(pc_mat)))         # samples × 2
+## merge
+cov_df <- cbind(cov_df, pc_df)
+names(cov_df) <- covariate.Names                      # tidy column names
 
-# Other variables for analysis
-N <- nrow(d) # number of individuals in the analysis
-Q <- ncol(U)  # number of covariates in the matrix U
-P <- ncol(X)  # number of SNPs in the matrix X
+cov_df$h_cohort      <- factor(cov_df$h_cohort)
+cov_df$e3_sex_None   <- factor(cov_df$e3_sex_None)
+cov_df$h_edumc_None  <- factor(cov_df$h_edumc_None)
+cov_df$h_mbmi_None   <- as.numeric(cov_df$h_mbmi_None)
+cov_df$h_age_None    <- as.numeric(cov_df$h_age_None)
+cov_df$ethn_PC1      <- as.numeric(cov_df$ethn_PC1)
+cov_df$ethn_PC2      <- as.numeric(cov_df$ethn_PC2)
 
+## ------------------------------------------------------------------
+## 4. build model matrix U ------------------------------------------
+## ------------------------------------------------------------------
+U <- model.matrix(~ -1 + ., data = cov_df)            # no intercept
+Q <- ncol(U)
 
+## ------------------------------------------------------------------
+## 5. Final sanity check & dimensions -------------------------------
+## ------------------------------------------------------------------
+keep <- complete.cases(cbind(Y, cov_df, X))
+X <- X[keep, , drop = FALSE]
+U <- U[keep, , drop = FALSE]
+Y <- Y[keep]
+
+N <- nrow(X); P <- ncol(X); Q <- ncol(U)
+message(sprintf("✓ Ready: %d subjects | %d SNPs | %d covariate columns.", N, P, Q))
 
 ```
 <br>
@@ -168,7 +207,7 @@ PRS.labels <- paste(paste(100*PRS.categories[1:(length(PRS.categories)-1)], 100*
 PRS.labels.s <- PRS.labels[!PRS.labels==PRS.ref]
 
 weight <- PRS.uni.results$Estimate  # get weight from data
-PRS <- X%*%weight # calculate PRS
+PRS <- as.matrix(X) %*% weight # calculate PRS
 
 # create categorical PRS
 q.v <- quantile(PRS[Y==0], probs=PRS.categories)  # quantile cutoffs within controls only

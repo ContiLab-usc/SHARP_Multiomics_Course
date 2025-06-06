@@ -41,10 +41,16 @@ if (!requireNamespace("summarytools", quietly = TRUE)) install.packages("summary
 if (!requireNamespace("UpSetR", quietly = TRUE)) install.packages("UpSetR")
 if (!requireNamespace("here", quietly = TRUE)) install.packages("here")
 if (!requireNamespace("Hmisc", quietly = TRUE)) install.packages("Hmisc")
+if (!requireNamespace("janitor", quietly = TRUE)) install.packages("janitor")
+if (!requireNamespace("BinaryDosage", quietly = TRUE)) install.packages("BinaryDosage")
+if (!requireNamespace("GxEScanR", quietly = TRUE)) install.packages("GxEScanR")
 
-                 
+
 # Bioconductor packages
 if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
+# This warning is expected and can be safely ignored:
+# "Warning message: package(s) not installed when version(s) same as or 
+# greater than current; use `force = TRUE` to re-install: 'MultiAssayExperiment'"
 BiocManager::install("MultiAssayExperiment")
 BiocManager::install("Biobase")
 BiocManager::install("ComplexHeatmap")

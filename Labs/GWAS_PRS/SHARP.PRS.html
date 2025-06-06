@@ -11,7 +11,7 @@
 
 <meta name="author" content="Author Name" />
 
-<meta name="date" content="2023-06-04" />
+<meta name="date" content="2025-05-27" />
 
 <title>SHARP Multiomics Workshop:</title>
 
@@ -2842,7 +2842,7 @@ border-radius: 0px;
 <h3 class="subtitle">Pre-Workshop Lab: Polygenic Risk Score
 Analysis</h3>
 <h4 class="author">Author Name</h4>
-<h4 class="date">04 June 2023</h4>
+<h4 class="date">27 May 2025</h4>
 
 </div>
 
@@ -2879,33 +2879,75 @@ association with the outcome <strong>hs_bmi_c_cat</strong>? <br></li>
 <h2>PRS: Processing the Data</h2>
 <pre class="r"><code>load(paste0(work.dir, &quot;/Labs/Data/HELIX.MultiAssayExperiment.RData&quot;))
 
-# not recommended way of storing genomewide data
-variables &lt;- c(covariate.Names, &quot;h_ethnicity_cauc&quot;, PRS.SNP.names)  # pull only PRS related SNPs
-d &lt;- wideFormat(intersectColumns(helix_ma[variables, ,]), colDataCols=outcome.Name) # 1) select variables but keep in MultiAssayExperiment format; 2) intersectionColumns selects only individuals with complete data; 3) wideFormat returns as a DataFrame</code></pre>
-<pre><code>## harmonizing input:
-##   removing 7854 sampleMap rows not in names(experiments)</code></pre>
-<pre class="r"><code># Create the outcome variable
-Y &lt;- d[,outcome.Name] # outcome
-if(outcome.Name==&quot;hs_bmi_c_cat&quot;) { Y &lt;- ifelse(as.numeric(Y)&gt;=3, 1, 0)}
+## ------------------------------------------------------------------
+## 0. Make sure the rowList has *all* needed rows  -------------------
+##     (genome SNPs  +  five covariates  +  two PCs)
+## ------------------------------------------------------------------
+rowList &lt;- list(
+  genome      = PRS.SNP.names,
+  covariates  = covariate.Names[1:5],                 # h_mbmi, sex, age, cohort, edu
+  proteome.cov = covariate.Names[6:7]                 # ethn_PC1, ethn_PC2
+)
 
-# Create  design matrix
-X &lt;- d[,paste0(&quot;genome_&quot;, PRS.SNP.names)]
-names(X) &lt;- PRS.SNP.names
-X &lt;- as.matrix(X)
+helix_sub &lt;- subsetByRow(helix_ma, rowList)
+helix_sub &lt;- intersectColumns(helix_sub)              # keeps only common samples
 
+## ------------------------------------------------------------------
+## 1. Outcome --------------------------------------------------------
+## ------------------------------------------------------------------
+Y &lt;- colData(helix_sub)[[outcome.Name]]
+if (outcome.Name == &quot;hs_bmi_c_cat&quot;)
+  Y &lt;- ifelse(as.numeric(Y) &gt;= 3, 1, 0)
 
-# Create the covariate design matrix
-U &lt;- d[,c(paste0(&quot;covariates_&quot;, covariate.Names[1:5]), paste0(&quot;proteome.cov_&quot;, covariate.Names[6:7]))]
-names(U) &lt;- covariate.Names
-U[,c(&quot;h_cohort&quot;,&quot;e3_sex_None&quot;,&quot;h_edumc_None&quot;)] &lt;- lapply(U[,c(&quot;h_cohort&quot;,&quot;e3_sex_None&quot;,&quot;h_edumc_None&quot;)], factor)
-U[,c(&quot;h_mbmi_None&quot;, &quot;h_age_None&quot;,&quot;ethn_PC1&quot;,&quot;ethn_PC2&quot;)] &lt;- lapply(U[,c(&quot;h_mbmi_None&quot;, &quot;h_age_None&quot;,&quot;ethn_PC1&quot;,&quot;ethn_PC2&quot;)], as.numeric)
-U &lt;- model.matrix(as.formula(paste(&quot;~-1+&quot;, paste(covariate.Names, collapse=&quot;+&quot;))), data=U) 
+## ------------------------------------------------------------------
+## 2. Design matrix X  (PRS SNPs) -----------------------------------
+## ------------------------------------------------------------------
+sample_ids &lt;- colnames(assays(helix_sub)$genome)      # from genome assay
+X &lt;- assays(helix_sub)$genome[PRS.SNP.names, sample_ids] |&gt;
+     as.matrix() |&gt;                          #  rows = SNPs , cols = samples
+     t() |&gt;                                  #  transpose → samples × SNPs
+     as.data.frame()                         #  base-R data.frame
 
+## tidy column names just in case
+colnames(X) &lt;- PRS.SNP.names
 
-# Other variables for analysis
-N &lt;- nrow(d) # number of individuals in the analysis
-Q &lt;- ncol(U)  # number of covariates in the matrix U
-P &lt;- ncol(X)  # number of SNPs in the matrix X</code></pre>
+## ------------------------------------------------------------------
+## 3. Covariate data-frame  -----------------------------------------
+## ------------------------------------------------------------------
+
+cov_main &lt;- assays(helix_sub)$covariates[covariate.Names[1:5], sample_ids]
+cov_df   &lt;- as.data.frame(t(as.matrix(cov_main)))     # now samples × 5
+pc_mat &lt;- assays(helix_sub)$`proteome.cov`[covariate.Names[6:7], sample_ids]
+pc_df  &lt;- as.data.frame(t(as.matrix(pc_mat)))         # samples × 2
+## merge
+cov_df &lt;- cbind(cov_df, pc_df)
+names(cov_df) &lt;- covariate.Names                      # tidy column names
+
+cov_df$h_cohort      &lt;- factor(cov_df$h_cohort)
+cov_df$e3_sex_None   &lt;- factor(cov_df$e3_sex_None)
+cov_df$h_edumc_None  &lt;- factor(cov_df$h_edumc_None)
+cov_df$h_mbmi_None   &lt;- as.numeric(cov_df$h_mbmi_None)
+cov_df$h_age_None    &lt;- as.numeric(cov_df$h_age_None)
+cov_df$ethn_PC1      &lt;- as.numeric(cov_df$ethn_PC1)
+cov_df$ethn_PC2      &lt;- as.numeric(cov_df$ethn_PC2)
+
+## ------------------------------------------------------------------
+## 4. build model matrix U ------------------------------------------
+## ------------------------------------------------------------------
+U &lt;- model.matrix(~ -1 + ., data = cov_df)            # no intercept
+Q &lt;- ncol(U)
+
+## ------------------------------------------------------------------
+## 5. Final sanity check &amp; dimensions -------------------------------
+## ------------------------------------------------------------------
+keep &lt;- complete.cases(cbind(Y, cov_df, X))
+X &lt;- X[keep, , drop = FALSE]
+U &lt;- U[keep, , drop = FALSE]
+Y &lt;- Y[keep]
+
+N &lt;- nrow(X); P &lt;- ncol(X); Q &lt;- ncol(U)
+message(sprintf(&quot;✓ Ready: %d subjects | %d SNPs | %d covariate columns.&quot;, N, P, Q))</code></pre>
+<pre><code>## ✓ Ready: 1122 subjects | 9 SNPs | 13 covariate columns.</code></pre>
 <p><br></p>
 </div>
 <div id="prs-statistical-approaches-for-association-analysis" class="section level2">
@@ -3127,7 +3169,7 @@ PRS.labels &lt;- paste(paste(100*PRS.categories[1:(length(PRS.categories)-1)], 1
 PRS.labels.s &lt;- PRS.labels[!PRS.labels==PRS.ref]
 
 weight &lt;- PRS.uni.results$Estimate  # get weight from data
-PRS &lt;- X%*%weight # calculate PRS
+PRS &lt;- as.matrix(X) %*% weight # calculate PRS
 
 # create categorical PRS
 q.v &lt;- quantile(PRS[Y==0], probs=PRS.categories)  # quantile cutoffs within controls only

@@ -353,7 +353,7 @@ display: none;
 
 
 <p>1— title: ‘SHARP Multiomics Workshop: Advanced Interactions Lab’
-author: “Natalia Zemlianskaia” date: “11 June 2024”</p>
+author: “Natalia Zemlianskaia” date: “27 May 2025”</p>
 <p>output: html_document: toc: true toc_float: true toc_depth: 4
 df_print: paged —</p>
 <div id="data-exploration" class="section level1">
@@ -435,13 +435,13 @@ gesso_cv = gesso.cv(G=X, Y=Y, E=E, C=U, family=&quot;binomial&quot;,
                     type_measure=&quot;auc&quot;,
                     normalize=TRUE, verbose=TRUE)</code></pre>
 <pre><code>## Compute grid:  
-## Time difference of 0.003223181 secs
+## Time difference of 0.003488779 secs
 ## Parallel cv: 
-## Time difference of 2.199327 secs
+## Time difference of 10.70292 secs
 ## Fit on the full dataset: 
-## Time difference of 1.121331 secs</code></pre>
+## Time difference of 1.142024 secs</code></pre>
 <pre class="r"><code>stop = Sys.time() - start; stop</code></pre>
-<pre><code>## Time difference of 3.397486 secs</code></pre>
+<pre><code>## Time difference of 11.95852 secs</code></pre>
 <pre class="r"><code># obtaining results
 coefs = gesso.coef(fit=gesso_cv$fit, lambda=gesso_cv$lambda_min)
 sum(coefs$beta_gxe != 0)</code></pre>

@@ -2752,7 +2752,7 @@ border-radius: 0px;
 <h1 class="title toc-ignore">SHARP Multi-omics Workshop: Mediation
 Analysis</h1>
 <h4 class="author">Yinqi Zhao, David Conti</h4>
-<h4 class="date">2024-05-30 22:39:56.772026</h4>
+<h4 class="date">2025-05-17 03:08:55.485908</h4>
 
 </div>
 
@@ -2842,45 +2842,59 @@ model parameters to 0 and we only keep mediators whose coefficient is
 not 0. The larger the penalty is, the more model parameters are shrunk
 to 0. As a result, we achieve variable selection for the high
 dimensional mediators.</p>
-<pre class="r"><code>med_multiple_hima = hima(X = dat$hs_hcb_cadj_Log2,
-                         Y = dat$hs_zbmi_who,
-                         M = omics,
-                         Y.family = &quot;gaussian&quot;,
-                         penalty = &quot;MCP&quot;,
-                         COV.XM = dat[,c(20, 22)], #adjust for potential confounders
-                         verbose = TRUE)
-# rename the column names for results from HIMA, in order to match the notations from slides
-colnames(med_multiple_hima) = colnames(med_multiple_hima)[c(1, 3, 2, 4:7)]
-colnames(med_multiple_hima)[4] = &quot;alpha*gamma&quot;
+<pre class="r"><code># Run classic HIMA to identify mediators linking HCB exposure to child BMI z-score
+med_multiple_hima &lt;- hima_classic(
+  X = dat$hs_hcb_madj_Log2,     # Exposure variable: maternal HCB levels (log2-transformed, madj)
+  Y = dat$hs_zbmi_who,          # Outcome variable: child BMI z-score
+  M = omics,                    # High-dimensional mediators (e.g., metabolomics)
+  Y.family = &quot;gaussian&quot;,        # Continuous outcome (linear model)
+  penalty = &quot;MCP&quot;               # Penalization method: Minimax Concave Penalty
+)
+
+# Rename output columns to match notation used in presentation slides
+colnames(med_multiple_hima) &lt;- c(&quot;ID&quot;, &quot;alpha&quot;, &quot;beta&quot;, &quot;alpha*gamma&quot;, &quot;rimp&quot;, &quot;p_value&quot;)
+
+# View the mediation results
 med_multiple_hima</code></pre>
 <div data-pagedtable="false">
 <script data-pagedtable-source type="application/json">
-{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["alpha"],"name":[1],"type":["dbl"],"align":["right"]},{"label":["gamma"],"name":[2],"type":["dbl"],"align":["right"]},{"label":["beta"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["alpha*gamma"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["% total effect"],"name":[5],"type":["dbl"],"align":["right"]},{"label":["Bonferroni.p"],"name":[6],"type":["dbl"],"align":["right"]},{"label":["BH.FDR"],"name":[7],"type":["dbl"],"align":["right"]}],"data":[{"1":"-0.084969690","2":"1.113912e-01","3":"-0.2799929","4":"-9.464874e-03","5":"3.380397451","6":"1.373175e-01","7":"1.055042e-02","_rn_":"serum_metab_8"},{"1":"0.057603219","2":"3.651178e-02","3":"-0.2799929","4":"2.103196e-03","5":"-0.751160499","6":"1.000000e+00","7":"1.044071e-01","_rn_":"serum_metab_24"},{"1":"0.051959440","2":"-8.103106e-02","3":"-0.2799929","4":"-4.210328e-03","5":"1.503726720","6":"1.000000e+00","7":"1.234970e-01","_rn_":"serum_metab_26"},{"1":"-0.052655004","2":"1.457876e-01","3":"-0.2799929","4":"-7.676445e-03","5":"2.741656959","6":"1.000000e+00","7":"1.234970e-01","_rn_":"serum_metab_27"},{"1":"0.056338065","2":"-3.852269e-02","3":"-0.2799929","4":"-2.170294e-03","5":"0.775124557","6":"1.000000e+00","7":"1.078621e-01","_rn_":"serum_metab_42"},{"1":"-0.137131583","2":"4.039975e-02","3":"-0.2799929","4":"-5.540082e-03","5":"1.978650603","6":"4.133356e-01","7":"2.066678e-02","_rn_":"serum_metab_47"},{"1":"0.082064983","2":"1.285253e-01","3":"-0.2799929","4":"1.054742e-02","5":"-3.767032407","6":"1.477059e-01","7":"1.055042e-02","_rn_":"serum_metab_49"},{"1":"-0.033881946","2":"-1.268832e-02","3":"-0.2799929","4":"4.299051e-04","5":"-0.153541416","6":"1.000000e+00","7":"3.360096e-01","_rn_":"serum_metab_50"},{"1":"0.048777935","2":"8.299097e-02","3":"-0.2799929","4":"4.048128e-03","5":"-1.445796630","6":"1.000000e+00","7":"1.498466e-01","_rn_":"serum_metab_54"},{"1":"-0.125975638","2":"3.945490e-02","3":"-0.2799929","4":"-4.970356e-03","5":"1.775171876","6":"2.538836e-01","7":"1.493433e-02","_rn_":"serum_metab_65"},{"1":"-0.051889759","2":"2.731072e-01","3":"-0.2799929","4":"-1.417147e-02","5":"5.061366348","6":"1.000000e+00","7":"1.234970e-01","_rn_":"serum_metab_75"},{"1":"-0.087591509","2":"-9.745844e-02","3":"-0.2799929","4":"8.536531e-03","5":"-3.048838293","6":"1.033517e-01","7":"8.612641e-03","_rn_":"serum_metab_80"},{"1":"-0.018544016","2":"2.078247e-01","3":"-0.2799929","4":"-3.853904e-03","5":"1.376428961","6":"1.000000e+00","7":"6.024744e-01","_rn_":"serum_metab_91"},{"1":"0.055354959","2":"-4.244232e-02","3":"-0.2799929","4":"-2.349393e-03","5":"0.839090159","6":"1.000000e+00","7":"1.078621e-01","_rn_":"serum_metab_94"},{"1":"-0.017523167","2":"1.566569e-01","3":"-0.2799929","4":"-2.745126e-03","5":"0.980426892","6":"1.000000e+00","7":"6.024744e-01","_rn_":"serum_metab_115"},{"1":"-0.017504829","2":"-2.089585e-01","3":"-0.2799929","4":"3.657784e-03","5":"-1.306384298","6":"1.000000e+00","7":"6.024744e-01","_rn_":"serum_metab_120"},{"1":"0.002468156","2":"-1.516501e-01","3":"-0.2799929","4":"-3.742962e-04","5":"0.133680588","6":"1.000000e+00","7":"9.597759e-01","_rn_":"serum_metab_142"},{"1":"0.106548661","2":"-4.028774e-01","3":"-0.2799929","4":"-4.292605e-02","5":"15.331120778","6":"1.003797e-02","7":"1.003797e-03","_rn_":"serum_metab_155"},{"1":"0.018224185","2":"1.492189e-01","3":"-0.2799929","4":"2.719392e-03","5":"-0.971235990","6":"1.000000e+00","7":"6.024744e-01","_rn_":"serum_metab_157"},{"1":"0.037569717","2":"1.104780e-01","3":"-0.2799929","4":"4.150626e-03","5":"-1.482404039","6":"1.000000e+00","7":"2.844710e-01","_rn_":"serum_metab_164"},{"1":"-0.256055903","2":"-3.980815e-03","3":"-0.2799929","4":"1.019311e-03","5":"-0.364048883","6":"1.000000e+00","7":"1.911693e-01","_rn_":"serum_metab_172"},{"1":"-0.011638314","2":"1.950640e-02","3":"-0.2799929","4":"-2.270216e-04","5":"0.081081182","6":"1.000000e+00","7":"7.356613e-01","_rn_":"urine_metab_4"},{"1":"-0.247520803","2":"4.456437e-02","3":"-0.2799929","4":"-1.103061e-02","5":"3.939603065","6":"8.791912e-01","7":"3.663297e-02","_rn_":"urine_metab_6"},{"1":"0.026053386","2":"2.261341e-02","3":"-0.2799929","4":"5.891559e-04","5":"-0.210418160","6":"1.000000e+00","7":"4.780875e-01","_rn_":"urine_metab_9"},{"1":"0.118357928","2":"1.175713e-02","3":"-0.2799929","4":"1.391550e-03","5":"-0.496994541","6":"1.000000e+00","7":"4.040583e-02","_rn_":"urine_metab_18"},{"1":"-0.001488302","2":"-3.487988e-02","3":"-0.2799929","4":"5.191182e-05","5":"-0.018540403","6":"1.000000e+00","7":"9.597759e-01","_rn_":"urine_metab_24"},{"1":"0.057661251","2":"1.594815e-02","3":"-0.2799929","4":"9.195904e-04","5":"-0.328433456","6":"1.000000e+00","7":"1.044071e-01","_rn_":"urine_metab_26"},{"1":"0.127767813","2":"-3.900483e-05","3":"-0.2799929","4":"-4.983561e-06","5":"0.001779888","6":"1.000000e+00","7":"1.392551e-01","_rn_":"urine_metab_30"},{"1":"-0.070241152","2":"2.613555e-02","3":"-0.2799929","4":"-1.835791e-03","5":"0.655656248","6":"5.971592e-01","7":"3.981061e-02","_rn_":"urine_metab_34"},{"1":"-0.044374459","2":"7.115173e-03","3":"-0.2799929","4":"-3.157320e-04","5":"0.112764268","6":"1.000000e+00","7":"1.938114e-01","_rn_":"urine_metab_38"},{"1":"0.105030922","2":"-7.350352e-03","3":"-0.2799929","4":"-7.720142e-04","5":"0.275726331","6":"1.000000e+00","7":"1.446212e-01","_rn_":"Adiponectin"},{"1":"-0.349155728","2":"6.676998e-01","3":"-0.2799929","4":"-2.331312e-01","5":"83.263255798","6":"1.048591e-33","7":"1.048591e-33","_rn_":"IL1beta"},{"1":"-0.025618017","2":"-2.775730e-02","3":"-0.2799929","4":"7.110870e-04","5":"-0.253966057","6":"1.000000e+00","7":"4.780875e-01","_rn_":"MCP1"},{"1":"-0.285115754","2":"1.496787e-02","3":"-0.2799929","4":"-4.267576e-03","5":"1.524172891","6":"7.619031e-01","7":"3.381858e-02","_rn_":"Leptin"},{"1":"-0.150804105","2":"-5.849747e-02","3":"-0.2799929","4":"8.821659e-03","5":"-3.150672173","6":"2.799982e-01","7":"1.555546e-02","_rn_":"HGF"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["ID"],"name":[1],"type":["chr"],"align":["left"]},{"label":["alpha"],"name":[2],"type":["dbl"],"align":["right"]},{"label":["beta"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["alpha*gamma"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["rimp"],"name":[5],"type":["dbl"],"align":["right"]},{"label":["p_value"],"name":[6],"type":["dbl"],"align":["right"]}],"data":[{"1":"serum_metab_49","2":"-0.1195029","3":"0.14562359","4":"-0.01740245","5":"6.114521","6":"4.777770e-05","_rn_":"serum_metab_49"},{"1":"serum_metab_50","2":"-0.1002855","3":"-0.09183947","4":"0.00921017","5":"3.236084","6":"6.527201e-04","_rn_":"serum_metab_50"},{"1":"serum_metab_91","2":"-0.1814116","3":"0.15037967","4":"-0.02728062","5":"9.585316","6":"1.279887e-07","_rn_":"serum_metab_91"},{"1":"serum_metab_116","2":"-0.1002859","3":"-0.23052089","4":"0.02311800","5":"8.122736","6":"6.526896e-04","_rn_":"serum_metab_116"},{"1":"IL1beta","2":"0.1947637","3":"0.71681841","4":"0.13961020","5":"49.053422","6":"2.606080e-11","_rn_":"IL1beta"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
   </script>
 </div>
-<p><strong>Interpretation of results:</strong> The output of HIMA
-package is a data.frame containing mediation testing results of
-mediators selected by the penalty terms. From left to right, the
-estimates are:</p>
-<ol style="list-style-type: decimal">
-<li>alpha: coefficient estimates of exposure (X) –&gt; mediators
-(M).</li>
-<li>gamma: coefficient estimates of mediators (M) –&gt; outcome (Y)
-(adjusted for exposure).</li>
-<li>beta: coefficient estimates of exposure (X) –&gt; outcome (Y) (total
-effect).</li>
-<li>alpha*gamma: mediation effect.</li>
-<li>% total effect: alpha*gamma / beta, percentage of the mediation
-effect out of the total effect. Note this is can be negative, depending
-on the sign of alpha, gamma and beta. This is not a “percentage” from 0
-to 1; it is ratio of mediation effect over total effect, to give you a
-sense how strong the mediation effect is.</li>
-<li>Bonferroni.p: statistical significance of the mediator adjusted by
-Bonferroni procedure.</li>
-<li>BH.FDR: statistical significance of the mediator adjusted by
-Benjamini-Hochberg procedure. In total, we identify 25 mediators as
-statistically significant.</li>
-</ol>
+<p><strong>Interpretation of results:</strong> The output from the
+hima_classic() function is a data.frame containing mediation analysis
+results for mediators selected through penalized regression. Each row
+corresponds to a selected mediator, and the columns provide the
+following information: 1. ID: The name of the mediator. 2. alpha: The
+estimated coefficient for the effect of the exposure (X) on the mediator
+(M), adjusting for covariates. 3. beta: The estimated coefficient for
+the effect of the mediator (M) on the outcome (Y), adjusting for
+exposure and covariates. 4. alpha<em>gamma: The estimated indirect
+(mediation) effect, calculated as the product of alpha and beta. 5.
+rimp: The relative importance of each mediator, defined as the
+proportion of its absolute mediation effect (|alpha</em>gamma|) relative
+to the sum of absolute mediation effects across all selected mediators.
+6. p_value: The p-value for testing the significance of the indirect
+effect (alpha × gamma), which reflects whether a mediator significantly
+transmits the effect from the exposure to the outcome. This is the raw
+joint p-value for each selected mediator. While the Bonferroni method is
+used to determine which mediators are selected (e.g., p &lt; 0.05 / m),
+the p_value itself is not adjusted—it remains the uncorrected result
+from the joint significance test.</p>
+<p>In the example output, the hima_classic() function identified five
+significant mediators linking maternal HCB exposure to child BMI
+z-score. For each mediator, the output includes the estimated
+coefficient from exposure to mediator (alpha), from mediator to outcome
+(beta), and their product (alpha × beta), which represents the indirect
+(mediation) effect. The relative importance (rimp) quantifies each
+mediator’s contribution to the total indirect effect across all selected
+mediators, while p_value indicates the statistical significance of the
+mediation pathway. Among the top mediators, IL1beta exhibited the
+strongest indirect effect (alpha × beta = 0.14, p = 2.6×10⁻¹¹),
+accounting for nearly half of the total mediation signal (rimp = 49%).
+Other serum metabolites such as serum_metab_91 and serum_metab_116 also
+contributed meaningfully to the mediation pathway with statistically
+significant effects (p &lt; 0.001).</p>
 </div>
 <div id="bama" class="section level3">
 <h3>4.2 BAMA</h3>
